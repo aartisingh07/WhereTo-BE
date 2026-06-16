@@ -100,10 +100,11 @@ way["${key}"="${value}"](around:${radiusMeters},${lat},${lng});`;
       out center 40;
     `;
 
-    const response = await axios.post(
-      'https://overpass-api.de/api/interpreter',
-      query,
-      { headers: { 'Content-Type': 'text/plain' }, timeout: 20000 }
+    // Use GET request — avoids 406 issues with POST body encoding
+    const encodedQuery = encodeURIComponent(query.trim());
+    const response = await axios.get(
+      `https://overpass-api.de/api/interpreter?data=${encodedQuery}`,
+      { timeout: 20000 }
     );
 
     const elements = response.data.elements || [];
