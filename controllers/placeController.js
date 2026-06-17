@@ -17,10 +17,10 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
 // Map mood → Geoapify category codes
 // Full list: https://apidocs.geoapify.com/docs/places/#categories
 const moodToCategories = {
-  chill:     'catering.cafe,leisure.park,natural.beach,tourism.sights.viewpoint,natural.water',
+  chill:     'catering.cafe,leisure.park,beach,tourism.attraction.viewpoint,natural.water',
   foodie:    'catering.restaurant,catering.cafe,catering.fast_food,catering.food_court,commercial.food_and_drink.bakery',
-  adventure: 'tourism.attraction,sport,natural.beach,tourism.sights.viewpoint,natural.peak',
-  romantic:  'tourism.sights.viewpoint,catering.restaurant,natural.beach,leisure.park,natural.water',
+  adventure: 'tourism.attraction,sport.sports_centre,natural.mountain.peak,beach,tourism.attraction.viewpoint',
+  romantic:  'tourism.attraction.viewpoint,catering.restaurant,beach,leisure.park,natural.water',
   study:     'catering.cafe,education.library,education.university',
 };
 
@@ -32,12 +32,12 @@ const categoryToLabel = {
   'catering.food_court':                    'Food Court',
   'commercial.food_and_drink.bakery':       'Bakery',
   'leisure.park':                           'Park',
-  'natural.beach':                          'Beach',
+  'beach':                                  'Beach',
   'natural.water':                          'Lake / Water',
-  'natural.peak':                           'Viewpoint',
-  'tourism.sights.viewpoint':               'Viewpoint',
+  'natural.mountain.peak':                  'Viewpoint',
+  'tourism.attraction.viewpoint':           'Viewpoint',
   'tourism.attraction':                     'Attraction',
-  'sport':                                  'Sports',
+  'sport.sports_centre':                    'Sports',
   'education.library':                      'Library',
   'education.university':                   'Study Space',
 };
