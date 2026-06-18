@@ -18,14 +18,16 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 const moodToCategories = {
-  chill:     'catering.cafe,leisure.park,beach,tourism.attraction.viewpoint,natural.water',
+  chill:     'leisure.park,natural.water,leisure.park.garden',
   foodie:    'catering.restaurant,catering.cafe,catering.fast_food,catering.food_court,commercial.food_and_drink.bakery',
-  adventure: 'tourism.attraction,sport.sports_centre,natural.mountain.peak,beach,tourism.attraction.viewpoint',
-  romantic:  'tourism.attraction.viewpoint,catering.restaurant,beach,leisure.park,natural.water',
-  study:     'catering.cafe,education.library,education.university',
+  adventure: 'sport.sports_centre,natural.mountain.peak,leisure.outdoor,tourism.attraction',
+  romantic:  'tourism.attraction.viewpoint,leisure.park.garden',
+  study:     'education.library,education.university',
 };
 
 const categoryToLabel = {
+  'catering.fast_food.street_food':         'Food Cart',
+  'catering.fast_food.food_truck':          'Food Truck',
   'catering.cafe':                          'Cafe',
   'catering.restaurant':                    'Restaurant',
   'catering.fast_food':                     'Fast Food',
@@ -34,10 +36,10 @@ const categoryToLabel = {
   'leisure.park':                           'Park',
   'beach':                                  'Beach',
   'natural.water':                          'Lake / Water',
-  'natural.mountain.peak':                  'Viewpoint',
-  'tourism.attraction.viewpoint':           'Viewpoint',
-  'tourism.attraction':                     'Attraction',
-  'sport.sports_centre':                    'Sports',
+  'natural.mountain.peak':                  'Mountain Peak',
+  'tourism.attraction.viewpoint':           'Scenic Viewpoint',
+  'tourism.attraction':                     'Adventure Spot',
+  'sport.sports_centre':                    'Sports Centre',
   'education.library':                      'Library',
   'education.university':                   'Study Space',
 };
@@ -84,6 +86,7 @@ const setupOutingHandler = (socket, io) => {
       lng: Number(pref.lng),
       mood: pref.mood || 'chill',
       distance: Number(pref.distance) || 5000,
+      subFilters: pref.subFilters || {},
       username: socket.username,
     });
 
@@ -108,12 +111,22 @@ const setupOutingHandler = (socket, io) => {
     let lngSum = 0;
     let distSum = 0;
     const moods = [];
+    const foodTypes = [];
+    const diets = [];
+    const adventureTypes = [];
+    const budgets = [];
 
     for (const userPref of prefs.values()) {
       latSum += userPref.lat;
       lngSum += userPref.lng;
       distSum += userPref.distance;
       moods.push(userPref.mood);
+      if (userPref.subFilters) {
+        if (userPref.subFilters.foodType) foodTypes.push(userPref.subFilters.foodType);
+        if (userPref.subFilters.diet) diets.push(userPref.subFilters.diet);
+        if (userPref.subFilters.adventureType) adventureTypes.push(userPref.subFilters.adventureType);
+        if (userPref.subFilters.budget) budgets.push(userPref.subFilters.budget);
+      }
     }
 
     const count = prefs.size;
@@ -121,17 +134,27 @@ const setupOutingHandler = (socket, io) => {
     const midLng = lngSum / count;
     const avgDist = distSum / count;
 
-    // Get mode mood (most frequent)
-    const moodCounts = {};
-    let modeMood = 'chill';
-    let maxCount = 0;
-    moods.forEach((m) => {
-      moodCounts[m] = (moodCounts[m] || 0) + 1;
-      if (moodCounts[m] > maxCount) {
-        maxCount = moodCounts[m];
-        modeMood = m;
-      }
-    });
+    // Get mode (most frequent) helper
+    const getMode = (arr, defaultValue) => {
+      if (!arr || arr.length === 0) return defaultValue;
+      const counts = {};
+      let mode = defaultValue;
+      let max = 0;
+      arr.forEach((item) => {
+        counts[item] = (counts[item] || 0) + 1;
+        if (counts[item] > max) {
+          max = counts[item];
+          mode = item;
+        }
+      });
+      return mode;
+    };
+
+    const modeMood = getMode(moods, 'chill');
+    const modeFoodType = getMode(foodTypes, 'any');
+    const modeDiet = getMode(diets, 'any');
+    const modeAdventureType = getMode(adventureTypes, 'any');
+    const modeBudget = getMode(budgets, 'any');
 
     const apiKey = process.env.GEOAPIFY_API_KEY;
     if (!apiKey) {
@@ -139,7 +162,37 @@ const setupOutingHandler = (socket, io) => {
     }
 
     try {
-      const categories = moodToCategories[modeMood] || moodToCategories['chill'];
+      let categories = moodToCategories[modeMood] || moodToCategories['chill'];
+
+      if (modeMood === 'foodie') {
+        const cats = [];
+        if (modeFoodType === 'junk_food') {
+          cats.push('catering.fast_food');
+        } else if (modeFoodType === 'cuisine') {
+          cats.push('catering.restaurant');
+        } else if (modeFoodType === 'food_cart') {
+          cats.push('catering.fast_food.street_food', 'catering.fast_food.food_truck');
+        } else {
+          cats.push('catering.restaurant', 'catering.cafe', 'catering.fast_food', 'commercial.food_and_drink.bakery');
+        }
+
+        if (modeDiet === 'veg') {
+          cats.push('catering.restaurant.vegetarian', 'catering.restaurant.vegan');
+        }
+        categories = cats.join(',');
+      } else if (modeMood === 'adventure') {
+        if (modeAdventureType === 'nature') {
+          categories = 'leisure.park,natural.forest,leisure.outdoor';
+        } else if (modeAdventureType === 'beach') {
+          categories = 'beach,natural.water';
+        } else if (modeAdventureType === 'mountains') {
+          categories = 'natural.mountain.peak';
+        } else if (modeAdventureType === 'sports') {
+          categories = 'sport.sports_centre';
+        } else {
+          categories = 'sport.sports_centre,natural.mountain.peak,leisure.outdoor,tourism.attraction';
+        }
+      }
 
       const response = await axios.get('https://api.geoapify.com/v2/places', {
         params: {
@@ -163,11 +216,97 @@ const setupOutingHandler = (socket, io) => {
           const placeLat = props.lat;
           const placeLng = props.lon;
           const dist = getDistance(midLat, midLng, placeLat, placeLng);
+          const estimatedRouteDistance = dist * 1.3;
+
+          // Calculate travel times in minutes
+          const walkTime = Math.max(1, Math.round((estimatedRouteDistance / 4.5) * 60));
+          const bikeTime = Math.max(1, Math.round((estimatedRouteDistance / 15) * 60));
+          const driveTime = Math.max(1, Math.round((estimatedRouteDistance / 35) * 60));
+
+          // Recommend least time vehicle
+          let recommendedVehicle = 'driving';
+          let recommendedTime = driveTime;
+          if (walkTime <= 15) {
+            recommendedVehicle = 'walking';
+            recommendedTime = walkTime;
+          } else if (bikeTime <= 15) {
+            recommendedVehicle = 'bicycling';
+            recommendedTime = bikeTime;
+          }
+
+          const label = getLabel(props.categories || []);
+
+          // Strict disjoint vibe filter
+          if (modeMood === 'chill' && !['Park', 'Lake / Water', 'Beach'].includes(label)) {
+            return null;
+          }
+          if (modeMood === 'romantic' && !['Scenic Viewpoint', 'Beach'].includes(label)) {
+            return null;
+          }
+          if (modeMood === 'adventure' && !['Mountain Peak', 'Adventure Spot', 'Sports Centre', 'Beach'].includes(label)) {
+            return null;
+          }
+          if (modeMood === 'study' && !['Library', 'Study Space', 'Cafe'].includes(label)) {
+            return null;
+          }
+          if (modeMood === 'foodie' && !['Restaurant', 'Cafe', 'Fast Food', 'Food Court', 'Bakery', 'Food Cart', 'Food Truck'].includes(label)) {
+            return null;
+          }
+
+          const categoryLower = label.toLowerCase();
+
+          // High-fidelity illustrative photos
+          let photo = 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=600&q=80'; // fallback
+          if (categoryLower.includes('cafe') || categoryLower.includes('bakery')) {
+            photo = 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80'; // Cafe
+          } else if (categoryLower.includes('restaurant') || categoryLower.includes('dining')) {
+            photo = 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80'; // Restaurant
+          } else if (categoryLower.includes('fast food') || categoryLower.includes('cart') || categoryLower.includes('truck')) {
+            photo = 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=600&q=80'; // Street food / cart
+          } else if (categoryLower.includes('park') || categoryLower.includes('garden')) {
+            photo = 'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=600&q=80'; // Park
+          } else if (categoryLower.includes('beach')) {
+            photo = 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80'; // Beach
+          } else if (categoryLower.includes('lake') || categoryLower.includes('water')) {
+            photo = 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=600&q=80'; // Lake
+          } else if (categoryLower.includes('mountain') || categoryLower.includes('peak') || categoryLower.includes('viewpoint')) {
+            photo = 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=600&q=80'; // Mountain
+          } else if (categoryLower.includes('sports') || categoryLower.includes('centre')) {
+            photo = 'https://images.unsplash.com/photo-1517649763962-0c623066013b?auto=format&fit=crop&w=600&q=80'; // Sports
+          } else if (categoryLower.includes('library') || categoryLower.includes('study') || categoryLower.includes('university')) {
+            photo = 'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=600&q=80'; // Library
+          }
+
+          // Illustrative descriptions
+          let description = 'A great place to visit and explore nearby.';
+          if (categoryLower.includes('cafe')) description = 'A cozy spot for fresh brew, aromatic coffee, and quick bites.';
+          else if (categoryLower.includes('bakery')) description = 'Delicious freshly baked goods, sweet pastries, and bread.';
+          else if (categoryLower.includes('restaurant')) description = 'An excellent dining option offering delicious meals and good service.';
+          else if (categoryLower.includes('fast food')) description = 'Perfect for a quick meal or grab-and-go junk food cravings.';
+          else if (categoryLower.includes('cart') || categoryLower.includes('truck')) description = 'Street-style food vendor serving fresh, local on-the-go treats.';
+          else if (categoryLower.includes('park')) description = 'Beautiful green space ideal for walks, relaxation, and nature vibes.';
+          else if (categoryLower.includes('beach')) description = 'Sandy shoreline with beautiful waves, perfect for sunbathing and swimming.';
+          else if (categoryLower.includes('lake') || categoryLower.includes('water')) description = 'Scenic water body offering quiet views and relaxing surroundings.';
+          else if (categoryLower.includes('mountain') || categoryLower.includes('viewpoint')) description = 'Breathtaking panoramic viewpoints offering stunning skyline landscapes.';
+          else if (categoryLower.includes('library')) description = 'Quiet library spaces packed with books, perfect for reading and studying.';
+          else if (categoryLower.includes('study') || categoryLower.includes('university')) description = 'Inspiring educational space designed for focus and productivity.';
+          else if (categoryLower.includes('sports')) description = 'Recreational centre with sports facilities to keep you active and energised.';
+
+          let budget = null;
+          if (modeMood === 'foodie') {
+            if (categoryLower.includes('cart') || categoryLower.includes('truck') || categoryLower.includes('street')) {
+              budget = 'cheap';
+            } else if (categoryLower.includes('restaurant') || categoryLower.includes('dining') || categoryLower.includes('court')) {
+              budget = 'expensive';
+            } else {
+              budget = 'moderate';
+            }
+          }
 
           return {
             osmId: props.place_id || `${placeLat}-${placeLng}`,
             name,
-            category: getLabel(props.categories || []),
+            category: label,
             lat: placeLat,
             lng: placeLng,
             distance: Math.round(dist * 10) / 10, // distance from midpoint
@@ -177,9 +316,25 @@ const setupOutingHandler = (socket, io) => {
             ].filter(Boolean).join(', '),
             phone: props.contact?.phone || null,
             website: props.website || null,
+            photo,
+            description,
+            budget,
+            travelTimes: {
+              walking: walkTime,
+              bicycling: bikeTime,
+              driving: driveTime,
+              recommended: recommendedVehicle,
+              recommendedTime: recommendedTime,
+            },
           };
         })
         .filter(Boolean)
+        .filter((place) => {
+          if (modeMood === 'foodie' && modeBudget && modeBudget !== 'any') {
+            return place.budget === modeBudget;
+          }
+          return true;
+        })
         .filter((place, index, self) =>
           index === self.findIndex((p) => p.name === place.name)
         )
