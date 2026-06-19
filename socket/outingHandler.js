@@ -20,7 +20,7 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
 const moodToCategories = {
   chill:     'leisure.park,natural.water,leisure.park.garden',
   foodie:    'catering.restaurant,catering.cafe,catering.fast_food,catering.food_court,commercial.food_and_drink.bakery',
-  adventure: 'sport.sports_centre,natural.mountain.peak,leisure.outdoor,tourism.attraction',
+  adventure: 'sport.sports_centre,natural.mountain.peak,tourism.attraction',
   romantic:  'tourism.attraction.viewpoint,leisure.park.garden',
   study:     'education.library,education.university',
 };
@@ -182,7 +182,7 @@ const setupOutingHandler = (socket, io) => {
         categories = cats.join(',');
       } else if (modeMood === 'adventure') {
         if (modeAdventureType === 'nature') {
-          categories = 'leisure.park,natural.forest,leisure.outdoor';
+          categories = 'leisure.park,natural.forest';
         } else if (modeAdventureType === 'beach') {
           categories = 'beach,natural.water';
         } else if (modeAdventureType === 'mountains') {
@@ -190,16 +190,30 @@ const setupOutingHandler = (socket, io) => {
         } else if (modeAdventureType === 'sports') {
           categories = 'sport.sports_centre';
         } else {
-          categories = 'sport.sports_centre,natural.mountain.peak,leisure.outdoor,tourism.attraction';
+          categories = 'sport.sports_centre,natural.mountain.peak,tourism.attraction';
         }
+      }
+
+      // Set disjoint distance bands to return distinct lists
+      let minDistanceKm = 0;
+      let maxDistanceKm = avgDist / 1000;
+      if (avgDist <= 3000) {
+        minDistanceKm = 0;
+        maxDistanceKm = avgDist / 1000;
+      } else if (avgDist > 3000 && avgDist <= 8000) {
+        minDistanceKm = 1.5;
+        maxDistanceKm = avgDist / 1000;
+      } else {
+        minDistanceKm = 4.0;
+        maxDistanceKm = Math.max(avgDist / 1000, 15.0);
       }
 
       const response = await axios.get('https://api.geoapify.com/v2/places', {
         params: {
           categories,
-          filter: `circle:${midLng},${midLat},${Math.round(avgDist)}`,
+          filter: `circle:${midLng},${midLat},${Math.round(maxDistanceKm * 1000)}`,
           bias: `proximity:${midLng},${midLat}`,
-          limit: 30,
+          limit: 100, // Fetch more places to get diverse choices beyond closest proximity
           apiKey,
         },
         timeout: 15000,
@@ -329,6 +343,10 @@ const setupOutingHandler = (socket, io) => {
           };
         })
         .filter(Boolean)
+        .filter((place) => {
+          // Enforce disjoint distance bands
+          return place.distance >= minDistanceKm && place.distance <= maxDistanceKm;
+        })
         .filter((place) => {
           if (modeMood === 'foodie' && modeBudget && modeBudget !== 'any') {
             return place.budget === modeBudget;

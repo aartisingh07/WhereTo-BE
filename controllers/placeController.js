@@ -19,7 +19,7 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
 const moodToCategories = {
   chill:     'leisure.park,natural.water,leisure.park.garden',
   foodie:    'catering.restaurant,catering.cafe,catering.fast_food,catering.food_court,commercial.food_and_drink.bakery',
-  adventure: 'sport.sports_centre,natural.mountain.peak,leisure.outdoor,tourism.attraction',
+  adventure: 'sport.sports_centre,natural.mountain.peak,tourism.attraction',
   romantic:  'tourism.attraction.viewpoint,leisure.park.garden',
   study:     'education.library,education.university',
 };
@@ -90,7 +90,7 @@ const getNearbyPlaces = async (req, res, next) => {
     } else if (mood === 'adventure') {
       const { adventureType } = subFilters;
       if (adventureType === 'nature') {
-        categories = 'leisure.park,natural.forest,leisure.outdoor';
+        categories = 'leisure.park,natural.forest';
       } else if (adventureType === 'beach') {
         categories = 'beach,natural.water';
       } else if (adventureType === 'mountains') {
@@ -98,7 +98,7 @@ const getNearbyPlaces = async (req, res, next) => {
       } else if (adventureType === 'sports') {
         categories = 'sport.sports_centre';
       } else {
-        categories = 'sport.sports_centre,natural.mountain.peak,leisure.outdoor,tourism.attraction';
+        categories = 'sport.sports_centre,natural.mountain.peak,tourism.attraction';
       }
     }
 
@@ -109,12 +109,22 @@ const getNearbyPlaces = async (req, res, next) => {
       return res.status(500).json({ message: 'Places API key not configured on server.' });
     }
 
+    // Set disjoint distance bands to return distinct lists
+    let minDistanceKm = 0;
+    let maxDistanceKm = radiusMeters / 1000;
+    if (radiusMeters === 5000) {
+      minDistanceKm = 1.5; // Mid-range is 1.5km to 5km
+    } else if (radiusMeters === 10000) {
+      minDistanceKm = 4.0; // Anywhere/distant is 4.0km to 15.0km
+      maxDistanceKm = 15.0; // Expand search area for far places
+    }
+
     const response = await axios.get('https://api.geoapify.com/v2/places', {
       params: {
         categories,
-        filter: `circle:${lng},${lat},${radiusMeters}`,
+        filter: `circle:${lng},${lat},${Math.round(maxDistanceKm * 1000)}`,
         bias: `proximity:${lng},${lat}`,
-        limit: 40,
+        limit: 100, // Fetch more places to get diverse choices beyond closest proximity
         apiKey,
       },
       timeout: 15000,
@@ -244,6 +254,10 @@ const getNearbyPlaces = async (req, res, next) => {
         };
       })
       .filter(Boolean)
+      .filter((place) => {
+        // Enforce the disjoint distance band filter
+        return place.distance >= minDistanceKm && place.distance <= maxDistanceKm;
+      })
       .filter((place) => {
         if (mood === 'foodie' && subFilters && subFilters.budget && subFilters.budget !== 'any') {
           return place.budget === subFilters.budget;
