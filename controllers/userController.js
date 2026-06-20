@@ -68,4 +68,44 @@ const deleteSavedPlace = async (req, res, next) => {
   }
 };
 
-module.exports = { savePlace, getSavedPlaces, deleteSavedPlace };
+// @desc    Delete user account and all related data
+// @route   DELETE /api/user
+// @access  Private
+const deleteAccount = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    // 1. Deactivate rooms where the user is the host
+    const Room = require('../models/Room');
+    await Room.updateMany({ host: userId }, { isActive: false });
+
+    // 2. Remove user from all room members
+    await Room.updateMany({ members: userId }, { $pull: { members: userId } });
+
+    // 3. Delete user's saved places
+    await SavedPlace.deleteMany({ user: userId });
+
+    // 4. Delete user's notifications
+    const Notification = require('../models/Notification');
+    await Notification.deleteMany({ user: userId });
+
+    // 5. Update/delete outing plans
+    const OutingPlan = require('../models/OutingPlan');
+    await OutingPlan.deleteMany({ creator: userId });
+    await OutingPlan.updateMany({ members: userId }, { $pull: { members: userId } });
+
+    // 6. Delete user's messages
+    const Message = require('../models/Message');
+    await Message.deleteMany({ sender: userId });
+
+    // 7. Delete the User document itself
+    await User.findByIdAndDelete(userId);
+
+    res.json({ message: 'Account successfully deleted' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { savePlace, getSavedPlaces, deleteSavedPlace, deleteAccount };
+
