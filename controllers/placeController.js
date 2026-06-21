@@ -1,4 +1,15 @@
 const axios = require('axios');
+const crypto = require('crypto');
+
+// Resolve Wikimedia Commons file name to direct image URL
+const getWikimediaUrl = (fileString) => {
+  if (!fileString || !fileString.startsWith('File:')) return null;
+  const cleanName = fileString.substring(5).replace(/ /g, '_');
+  const hash = crypto.createHash('md5').update(cleanName).digest('hex');
+  const f1 = hash[0];
+  const f2 = hash.substring(0, 2);
+  return `https://upload.wikimedia.org/wikipedia/commons/${f1}/${f2}/${encodeURIComponent(cleanName)}`;
+};
 
 // Haversine formula — distance in km between two coordinates
 const getDistance = (lat1, lon1, lat2, lon2) => {
@@ -211,27 +222,7 @@ const getNearbyPlaces = async (req, res, next) => {
 
         const categoryLower = label.toLowerCase();
 
-        // High-fidelity illustrative photos
-        let photo = 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=600&q=80'; // fallback
-        if (categoryLower.includes('cafe') || categoryLower.includes('bakery')) {
-          photo = 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80'; // Cafe
-        } else if (categoryLower.includes('restaurant') || categoryLower.includes('dining')) {
-          photo = 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80'; // Restaurant
-        } else if (categoryLower.includes('fast food') || categoryLower.includes('cart') || categoryLower.includes('truck')) {
-          photo = 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=600&q=80'; // Street food / cart
-        } else if (categoryLower.includes('park') || categoryLower.includes('garden')) {
-          photo = 'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=600&q=80'; // Park
-        } else if (categoryLower.includes('beach')) {
-          photo = 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80'; // Beach
-        } else if (categoryLower.includes('lake') || categoryLower.includes('water')) {
-          photo = 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=600&q=80'; // Lake
-        } else if (categoryLower.includes('mountain') || categoryLower.includes('peak') || categoryLower.includes('viewpoint')) {
-          photo = 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=600&q=80'; // Mountain
-        } else if (categoryLower.includes('sports') || categoryLower.includes('centre')) {
-          photo = 'https://images.unsplash.com/photo-1517649763962-0c623066013b?auto=format&fit=crop&w=600&q=80'; // Sports
-        } else if (categoryLower.includes('library') || categoryLower.includes('study') || categoryLower.includes('university')) {
-          photo = 'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=600&q=80'; // Library
-        }
+        let photo = null;
 
         // Illustrative descriptions
         let description = 'A great place to visit and explore nearby.';
@@ -301,9 +292,45 @@ const getNearbyPlaces = async (req, res, next) => {
       .sort((a, b) => a.distance - b.distance)
       .slice(0, 20);
 
+    // Fetch details for each place in parallel to get wiki_and_media (real photo)
+    const detailedPlaces = await Promise.all(
+      places.map(async (place) => {
+        try {
+          const detailRes = await axios.get('https://api.geoapify.com/v2/place-details', {
+            params: {
+              id: place.osmId,
+              features: 'wiki_and_media',
+              apiKey,
+            },
+            timeout: 2000, // 2-second timeout
+          });
+          const wikiImage = detailRes.data?.features?.[0]?.properties?.wiki_and_media?.image;
+          
+          let resolvedPhoto = null;
+          if (wikiImage) {
+            if (wikiImage.startsWith('http://') || wikiImage.startsWith('https://')) {
+              resolvedPhoto = wikiImage;
+            } else if (wikiImage.startsWith('File:')) {
+              resolvedPhoto = getWikimediaUrl(wikiImage);
+            }
+          }
+          
+          return {
+            ...place,
+            photo: resolvedPhoto,
+          };
+        } catch (err) {
+          return {
+            ...place,
+            photo: null,
+          };
+        }
+      })
+    );
+
     res.json({
-      places,
-      count: places.length,
+      places: detailedPlaces,
+      count: detailedPlaces.length,
       mood,
       radius: radiusMeters,
       resolvedLocation: {
