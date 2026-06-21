@@ -62,10 +62,38 @@ const getLabel = (categories = []) => {
 // @access  Public
 const getNearbyPlaces = async (req, res, next) => {
   try {
-    const { lat, lng, mood = 'chill', distance = 5000, subFilters = {} } = req.body;
+    const { lat, lng, locationQuery, mood = 'chill', distance = 5000, subFilters = {} } = req.body;
+    const apiKey = process.env.GEOAPIFY_API_KEY;
 
-    if (!lat || !lng) {
-      return res.status(400).json({ message: 'Location (lat, lng) is required' });
+    if (!apiKey) {
+      return res.status(500).json({ message: 'Places API key not configured on server.' });
+    }
+
+    let resolvedLat = lat;
+    let resolvedLng = lng;
+    let resolvedAddress = '';
+
+    if (locationQuery && locationQuery.trim()) {
+      const geocodeResponse = await axios.get('https://api.geoapify.com/v1/geocode/search', {
+        params: {
+          text: locationQuery.trim(),
+          apiKey,
+        },
+        timeout: 10000,
+      });
+
+      const firstResult = geocodeResponse.data?.features?.[0];
+      if (!firstResult) {
+        return res.status(404).json({ message: `Could not resolve location: "${locationQuery}"` });
+      }
+
+      resolvedLat = firstResult.properties.lat;
+      resolvedLng = firstResult.properties.lon;
+      resolvedAddress = firstResult.properties.formatted;
+    } else {
+      if (!lat || !lng) {
+        return res.status(400).json({ message: 'Location (coordinates or text search) is required' });
+      }
     }
 
     let categories = moodToCategories[mood] || moodToCategories['chill'];
@@ -104,11 +132,6 @@ const getNearbyPlaces = async (req, res, next) => {
     }
 
     const radiusMeters = Number(distance);
-    const apiKey = process.env.GEOAPIFY_API_KEY;
-
-    if (!apiKey) {
-      return res.status(500).json({ message: 'Places API key not configured on server.' });
-    }
 
     // Set disjoint distance bands to return distinct lists
     let minDistanceKm = 0;
@@ -123,8 +146,8 @@ const getNearbyPlaces = async (req, res, next) => {
     const response = await axios.get('https://api.geoapify.com/v2/places', {
       params: {
         categories,
-        filter: `circle:${lng},${lat},${Math.round(maxDistanceKm * 1000)}`,
-        bias: `proximity:${lng},${lat}`,
+        filter: `circle:${resolvedLng},${resolvedLat},${Math.round(maxDistanceKm * 1000)}`,
+        bias: `proximity:${resolvedLng},${resolvedLat}`,
         limit: 100, // Fetch more places to get diverse choices beyond closest proximity
         apiKey,
       },
@@ -141,7 +164,7 @@ const getNearbyPlaces = async (req, res, next) => {
 
         const placeLat = props.lat;
         const placeLng = props.lon;
-        const dist = getDistance(lat, lng, placeLat, placeLng);
+        const dist = getDistance(resolvedLat, resolvedLng, placeLat, placeLng);
         const estimatedRouteDistance = dist * 1.3;
 
         // Calculate travel times in minutes
@@ -271,7 +294,17 @@ const getNearbyPlaces = async (req, res, next) => {
       .sort((a, b) => a.distance - b.distance)
       .slice(0, 20);
 
-    res.json({ places, count: places.length, mood, radius: radiusMeters });
+    res.json({
+      places,
+      count: places.length,
+      mood,
+      radius: radiusMeters,
+      resolvedLocation: {
+        lat: resolvedLat,
+        lng: resolvedLng,
+        address: resolvedAddress || 'Current Location'
+      }
+    });
   } catch (error) {
     if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
       return res.status(503).json({ message: 'Location service timed out. Try again.' });
