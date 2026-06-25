@@ -22,6 +22,10 @@ const searchUsers = async (req, res, next) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    if (user._id.toString() === req.user.id) {
+      return res.status(400).json({ message: 'You cannot search for yourself' });
+    }
+
     // Check if a request already exists between current user and searched user
     const request = await ChatRequest.findOne({
       $or: [
