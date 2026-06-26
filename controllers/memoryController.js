@@ -130,9 +130,22 @@ const deleteMemory = async (req, res, next) => {
   }
 };
 
+const getMemoriesFeed = async (req, res, next) => {
+  try {
+    const memories = await Memory.find({ visibility: 'public' })
+      .populate('user', 'username avatar')
+      .sort({ createdAt: -1 });
+
+    res.json(memories);
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   upload,
   uploadMemory,
   getMemoriesByUserId,
-  deleteMemory
+  deleteMemory,
+  getMemoriesFeed
 };
