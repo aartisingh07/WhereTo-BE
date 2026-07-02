@@ -13,9 +13,12 @@ const {
   markMessagesAsRead,
   editDirectMessage,
   deleteDirectMessage,
-  deleteConversation
+  deleteConversation,
+  getChatRelationships,
+  removeConnection
 } = require('../controllers/chatController');
 
+router.get('/relationships', protect, getChatRelationships);
 router.get('/search', protect, searchUsers);
 router.post('/request', protect, sendChatRequest);
 router.post('/request/:requestId', protect, handleChatRequest);
@@ -28,5 +31,6 @@ router.post('/messages/:otherUserId', protect, sendDirectMessage);
 router.put('/message/:messageId', protect, editDirectMessage);
 router.delete('/message/:messageId', protect, deleteDirectMessage);
 router.delete('/conversation/:otherUserId', protect, deleteConversation);
+router.delete('/connection/:otherUserId', protect, removeConnection);
 
 module.exports = router;

@@ -514,6 +514,82 @@ const deleteConversation = async (req, res, next) => {
   }
 };
 
+// @desc    Get all chat relationships for current user
+// @route   GET /api/chats/relationships
+// @access  Private
+const getChatRelationships = async (req, res, next) => {
+  try {
+    const requests = await ChatRequest.find({
+      $or: [
+        { sender: req.user.id },
+        { receiver: req.user.id }
+      ]
+    });
+
+    const relationships = {};
+    for (const reqObj of requests) {
+      const otherUserId = reqObj.sender.toString() === req.user.id 
+        ? reqObj.receiver.toString() 
+        : reqObj.sender.toString();
+      
+      relationships[otherUserId] = {
+        status: reqObj.status === 'accepted' ? 'accepted' : (reqObj.sender.toString() === req.user.id ? 'pending_sent' : 'pending_received'),
+        requestId: reqObj._id
+      };
+    }
+
+    res.json(relationships);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Remove/delete a connection (accepted chat request) and messages
+// @route   DELETE /api/chats/connection/:otherUserId
+// @access  Private
+const removeConnection = async (req, res, next) => {
+  try {
+    const { otherUserId } = req.params;
+
+    // Find and delete accepted request
+    const deletedRequest = await ChatRequest.findOneAndDelete({
+      $or: [
+        { sender: req.user.id, receiver: otherUserId },
+        { sender: otherUserId, receiver: req.user.id }
+      ]
+    });
+
+    if (!deletedRequest) {
+      return res.status(404).json({ message: 'No connection found with this user' });
+    }
+
+    // Delete conversation history
+    await DirectMessage.deleteMany({
+      $or: [
+        { sender: req.user.id, receiver: otherUserId },
+        { sender: otherUserId, receiver: req.user.id }
+      ]
+    });
+
+    // Emit socket event to notify both users that relationship is deleted and active chat updates
+    const io = req.app.get('io');
+    if (io) {
+      io.emit(`chat-relationship-updated-${req.user.id}`, { otherUserId, status: 'none', requestId: null });
+      io.emit(`chat-relationship-updated-${otherUserId}`, { otherUserId: req.user.id, status: 'none', requestId: null });
+      
+      // Also notify that direct conversation has been deleted so UI cleans up active chat
+      io.emit(`direct-conversation-deleted-${otherUserId}`, { otherUserId: req.user.id });
+      io.emit(`direct-conversation-deleted-${req.user.id}`, { otherUserId });
+      io.emit(`unread-count-updated-${req.user.id}`);
+      io.emit(`unread-count-updated-${otherUserId}`);
+    }
+
+    res.json({ message: 'Removed from chats successfully' });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   searchUsers,
   sendChatRequest,
@@ -526,5 +602,8 @@ module.exports = {
   markMessagesAsRead,
   editDirectMessage,
   deleteDirectMessage,
-  deleteConversation
+  deleteConversation,
+  getChatRelationships,
+  removeConnection
 };
+
