@@ -27,6 +27,16 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  googleId: {
+    type: String,
+    unique: true,
+    sparse: true,
+  },
+  githubId: {
+    type: String,
+    unique: true,
+    sparse: true,
+  },
   savedPlaces: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'SavedPlace',
