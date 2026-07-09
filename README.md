@@ -6,7 +6,7 @@
 
 ## ✨ Features
 
-- 🔐 **JWT Authentication** — Secure user register, login, and profile tracking using bcryptjs and auto-generated DiceBear avatars.
+- 🔐 **OAuth-Only Authentication** — Secure registration and logins handled exclusively via **Google and GitHub OAuth** (producing cryptographically signed JWT tokens). Traditional email/password registration is disabled to prevent fake profile spams.
 - 📡 **Real-Time WebSockets (Socket.io)** — Secure token verification on handshake and modular event handlers for room activities.
 - 🎮 **Generic Proposal & Voting Engine** — Real-time Yes/No/Maybe voting tally systems with 30s auto-expiry.
 - 🎬 **TMDB Discover & Providers** — Advanced movie discover aggregation mapping moods and query parameters, falling back to a local catalog, and fetching watch provider platforms.
@@ -99,6 +99,17 @@ CLIENT_URL=http://localhost:5173
 NODE_ENV=development
 GEOAPIFY_API_KEY=your_geoapify_key_here
 TMDB_API_KEY=your_tmdb_key_here
+
+# OAuth Keys
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+GITHUB_CLIENT_ID=your_github_client_id
+GITHUB_CLIENT_SECRET=your_github_client_secret
+
+# Cloudinary Keys
+CLOUDINARY_CLOUD_NAME=your_cloudinary_name
+CLOUDINARY_API_KEY=your_cloudinary_api_key
+CLOUDINARY_API_SECRET=your_cloudinary_secret
 ```
 
 ### Run Locally
@@ -118,8 +129,10 @@ The server will spin up at `http://localhost:5000`.
 ## 📡 API Endpoints
 
 ### 🔑 Authentication (`/api/auth`)
-- `POST /api/auth/register` — Register a new account
-- `POST /api/auth/login` — Login and retrieve JWT token
+- `POST /api/auth/register` — **[DISABLED]** Traditional signup is blocked to prevent spam
+- `POST /api/auth/login` — **[DISABLED]** Traditional login is blocked to prevent spam
+- `GET /api/auth/google` — Initiates Google OAuth redirect flow
+- `GET /api/auth/github` — Initiates GitHub OAuth redirect flow
 - `GET /api/auth/me` — Retrieve current user session details (Auth required)
 
 ### 🏠 Rooms (`/api/rooms`)
