@@ -24,6 +24,29 @@ const roomSchema = new mongoose.Schema({
       ref: 'User',
     },
   ],
+  joinRequests: [
+    {
+      user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true,
+      },
+      note: {
+        type: String,
+        default: '',
+        maxlength: 200,
+      },
+      status: {
+        type: String,
+        enum: ['pending', 'accepted', 'rejected'],
+        default: 'pending',
+      },
+      createdAt: {
+        type: Date,
+        default: Date.now,
+      }
+    }
+  ],
   activity: {
     type: String,
     enum: ['none', 'game', 'watch', 'outing', 'study', 'chat'],

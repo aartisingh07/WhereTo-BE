@@ -155,6 +155,11 @@ const setupSocket = (io) => {
       io.to(roomId).emit('outing-plan-scheduled');
     });
 
+    // ── Kick User ──────────────────────────────────────────
+    socket.on('kick-user', ({ roomId, userId }) => {
+      io.to(roomId).emit('user-kicked', { userId });
+    });
+
 
     // ── Leave Room ─────────────────────────────────────────
     socket.on('leave-room', async ({ roomId }) => {
