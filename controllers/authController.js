@@ -1,6 +1,8 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const axios = require('axios');
+const multer = require('multer');
+const cloudinary = require('cloudinary').v2;
 
 // Generate JWT token
 const generateToken = (id) => {
@@ -41,6 +43,9 @@ const getMe = async (req, res, next) => {
     res.json({
       _id: user._id,
       username: user.username,
+      name: user.name || '',
+      bio: user.bio || '',
+      lastUsernameChange: user.lastUsernameChange || null,
       email: user.email,
       avatar: user.avatar,
       createdAt: user.createdAt,
@@ -60,10 +65,19 @@ const getOrCreateOAuthUser = async (oauthIdField, oauthId, email, defaultUsernam
     if (user) {
       user[oauthIdField] = oauthId;
       if (!user.avatar) user.avatar = defaultAvatar;
+      if (!user.name) user.name = defaultUsername || '';
       await user.save();
     } else {
       const randomPassword = Math.random().toString(36).slice(-12) + 'OAuth!';
-      let cleanUsername = defaultUsername.replace(/[^a-zA-Z0-9]/g, '').slice(0, 15);
+      
+      let cleanUsername;
+      if (oauthIdField === 'googleId') {
+        // Assign random username for Google sign-in
+        cleanUsername = 'User_' + Math.floor(10000 + Math.random() * 90000);
+      } else {
+        cleanUsername = defaultUsername.replace(/[^a-zA-Z0-9]/g, '').slice(0, 15);
+      }
+
       const usernameExists = await User.findOne({ username: cleanUsername });
       if (usernameExists) {
         cleanUsername = cleanUsername + Math.floor(Math.random() * 100);
@@ -71,6 +85,7 @@ const getOrCreateOAuthUser = async (oauthIdField, oauthId, email, defaultUsernam
 
       user = await User.create({
         username: cleanUsername,
+        name: defaultUsername || '',
         email,
         password: randomPassword,
         avatar: defaultAvatar || `https://api.dicebear.com/7.x/thumbs/svg?seed=${cleanUsername}`,
@@ -224,6 +239,125 @@ const githubOAuthCallback = async (req, res, next) => {
   }
 };
 
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+// Configure Multer for In-Memory Storage (limit to 2MB)
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage,
+  limits: { fileSize: 2 * 1024 * 1024 }
+});
+
+const uploadToCloudinary = (fileBuffer) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { folder: 'whereto_avatars' },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+    uploadStream.end(fileBuffer);
+  });
+};
+
+// @desc    Update user profile details (Photo, Name, Username)
+// @route   PUT /api/auth/update-profile
+// @access  Private
+const updateProfile = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const { name, username, bio } = req.body;
+
+    // Check username change constraints
+    if (username && username.trim() !== user.username) {
+      const cleanUsername = username.trim();
+
+      const usernameRegex = /^[a-zA-Z0-9._]+$/;
+      if (!usernameRegex.test(cleanUsername)) {
+        return res.status(400).json({ message: 'Username can only contain letters, numbers, periods (.), and underscores (_)' });
+      }
+
+      if (cleanUsername.length < 3 || cleanUsername.length > 20) {
+        return res.status(400).json({ message: 'Username must be between 3 and 20 characters' });
+      }
+
+      if (cleanUsername.startsWith('.') || cleanUsername.endsWith('.')) {
+        return res.status(400).json({ message: 'Username cannot start or end with a period' });
+      }
+
+      if (cleanUsername.includes('..')) {
+        return res.status(400).json({ message: 'Username cannot contain consecutive periods' });
+      }
+
+      // Enforce once a month constraint (30 days)
+      if (user.lastUsernameChange) {
+        const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+        const timeSinceLastChange = Date.now() - user.lastUsernameChange.getTime();
+        if (timeSinceLastChange < thirtyDaysMs) {
+          const nextAvailableDate = new Date(user.lastUsernameChange.getTime() + thirtyDaysMs);
+          return res.status(400).json({ 
+            message: `You can only change your username once a month. Next change available on ${nextAvailableDate.toLocaleDateString()}` 
+          });
+        }
+      }
+
+      // Check if username is already taken
+      const usernameExists = await User.findOne({ username: cleanUsername });
+      if (usernameExists) {
+        return res.status(400).json({ message: 'Username is already taken' });
+      }
+
+      user.username = cleanUsername;
+      user.lastUsernameChange = new Date();
+    }
+
+    // Update name
+    if (name !== undefined) {
+      user.name = name.trim();
+    }
+
+    // Update bio
+    if (bio !== undefined) {
+      const words = bio.trim().split(/\s+/).filter(Boolean);
+      if (words.length > 300) {
+        return res.status(400).json({ message: 'About Me section cannot exceed 300 words' });
+      }
+      user.bio = bio.trim();
+    }
+
+    // Update avatar if file is uploaded
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer);
+      user.avatar = result.secure_url;
+    }
+
+    await user.save();
+
+    res.json({
+      _id: user._id,
+      username: user.username,
+      name: user.name || '',
+      bio: user.bio || '',
+      email: user.email,
+      avatar: user.avatar,
+      lastUsernameChange: user.lastUsernameChange || null,
+      message: 'Profile updated successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = { 
   register, 
   login, 
@@ -231,5 +365,7 @@ module.exports = {
   googleOAuthRedirect, 
   googleOAuthCallback, 
   githubOAuthRedirect, 
-  githubOAuthCallback 
+  githubOAuthCallback,
+  upload,
+  updateProfile
 };

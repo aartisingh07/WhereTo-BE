@@ -109,7 +109,7 @@ const deleteAccount = async (req, res, next) => {
 
 const getUserProfile = async (req, res, next) => {
   try {
-    const user = await User.findById(req.params.id).select('username avatar createdAt');
+    const user = await User.findById(req.params.id).select('username name bio avatar createdAt');
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -117,6 +117,8 @@ const getUserProfile = async (req, res, next) => {
     res.json({
       _id: user._id,
       username: user.username,
+      name: user.name || '',
+      bio: user.bio || '',
       avatar: user.avatar,
       createdAt: user.createdAt,
       savedPlacesCount
