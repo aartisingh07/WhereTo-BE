@@ -15,6 +15,9 @@
 - 🗺️ **Location Autocomplete & Real Photos** — Debounced autocomplete suggestions dropdown on search input typing, prepending specific geocoded POIs, and parallel place detail queries with MD5 resolution for Wikimedia Commons media.
 - 💬 **Private Direct Messaging (DM)** — Search users, send connection invitations, manage pending requests, and exchange secure real-time messages with unread notification counts, socket updates, and read synchronization.
 - 📸 **Memories & Media Storage API** — Stream and parse multipart image uploads using Multer, resize/compress and upload assets to Cloudinary cloud media storage, and fetch user-centric or public community feeds.
+- 👤 **Profile Customization Engine** — Update display names, avatar photos (using Multer streaming directly to Cloudinary), usernames (permits periods and underscores, enforces no consecutive periods or boundary periods), enforce a 30-day username cooldown limit, and About Me bios capped at 300 words max.
+- 🏠 **Collaborative Room Requests & Management** — Browse active public lobbies, request to join with optional custom notes, approve or decline pending requests in real-time, and kick members or hard-delete rooms (deleting all associated chat messages from MongoDB in a single query).
+- 🧹 **MongoDB TTL Expirations** — Automatic database cleanups using native MongoDB TTL indices: rooms automatically expire and get deleted 24 hours after creation, and chat messages are purged after 48 hours to prevent database bloat.
 
 ---
 
@@ -42,9 +45,9 @@ backend/
 ├── config/
 │   └── db.js                  # MongoDB database connection
 ├── controllers/               # Route handler logic
-│   ├── authController.js      # Register, login, session details
+│   ├── authController.js      # Register, login, profile updates
 │   ├── placeController.js     # Geoapify place finder
-│   ├── roomController.js      # Room creation, joining, and deactivation
+│   ├── roomController.js      # Room creation, joining, requests, kicking, and hard deletes
 │   ├── movieController.js     # TMDB movie discovery and watch providers
 │   └── memoryController.js    # Cloudinary image upload and feed controller
 ├── middleware/
@@ -58,13 +61,13 @@ backend/
 │   ├── movieRoutes.js
 │   └── memoryRoutes.js        # Memories feed & upload routes
 ├── socket/                    # Real-time event handlers
-│   ├── socketHandler.js       # Core socket connection & chat listener
+│   ├── socketHandler.js       # Core socket connection, chats, kicks, & deletes
 │   ├── votingHandler.js       # Game, movie, and outing group voting
 │   ├── timerHandler.js        # Synchronized room Pomodoro timer
 │   └── outingHandler.js       # Location aggregation & midpoint search
 ├── utils/                     # Helper functions (code generator)
 ├── server.js                  # App entry point
-└── package.json
+├── package.json
 ```
 
 ---
@@ -134,14 +137,21 @@ The server will spin up at `http://localhost:5000`.
 - `GET /api/auth/google` — Initiates Google OAuth redirect flow
 - `GET /api/auth/github` — Initiates GitHub OAuth redirect flow
 - `GET /api/auth/me` — Retrieve current user session details (Auth required)
+- `PUT /api/auth/update-profile` — Update Name, Username, avatar file stream upload to Cloudinary, and bio (Auth required)
 
 ### 🏠 Rooms (`/api/rooms`)
 - `POST /api/rooms/create` — Generate room code and initialize room (Auth required)
 - `POST /api/rooms/join` — Enter room by 6-character code (Auth required)
+- `GET /api/rooms/active` — Fetch active public rooms of everyone excluding oneself (Auth required)
+- `GET /api/rooms/my-rooms` — Fetch user's own active rooms (Auth required)
 - `GET /api/rooms/:id` — Retrieve room info & member lists (Auth required)
 - `GET /api/rooms/:id/messages` — Retrieve room's chat history (Auth required)
 - `PATCH /api/rooms/:id/activity` — Modify room's current activity (Host only)
 - `POST /api/rooms/:id/leave` — Leave the room lobby (Auth required)
+- `DELETE /api/rooms/:id` — Purge room document and associated chats from MongoDB (Host only)
+- `POST /api/rooms/:id/request-join` — Submit join request with an optional note to host (Auth required)
+- `POST /api/rooms/:id/respond-request` — Approve or reject a user's join request (Host only)
+- `POST /api/rooms/:id/remove-member` — Kick a user from the room (Host only)
 
 ### 📍 Places (`/api/places` & `/api/user`)
 - `POST /api/places/nearby` — Get nearby places by mood/radius (Solo Explore)
@@ -205,6 +215,10 @@ The server will spin up at `http://localhost:5000`.
 | `outing-state-update` | Server → Client | `{ submissions }` | Update list of users who submitted locations |
 | `find-outing-places` | Client → Server | `{ roomId }` | Host triggers midpoint aggregation |
 | `outing-places-found` | Server → Client | `{ places, midpoint, mood, radius }` | Broadcast calculated places |
+| `kick-user` | Client → Server | `{ roomId, userId }` | Host removes a member from the socket |
+| `user-kicked` | Server → Client | `{ userId }` | Broadcast user removal notification to client |
+| `delete-room` | Client → Server | `{ roomId }` | Host deconstructs the room lobby |
+| `room-deleted` | Server → Client | - | Broadcast room deleted teardown trigger |
 | `direct-message-${receiverId}` | Server → Client | Message Object | Direct message sent to receiver |
 | `unread-count-updated-${receiverId}` | Server → Client | `{ unreadCount }` | Notify receiver of their updated unread DM count |
 | `direct-message-updated-${userId}` | Server → Client | `{ messageId, content, isEdited: true, sender, receiver }` | Notify users of direct message edit |
