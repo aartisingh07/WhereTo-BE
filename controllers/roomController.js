@@ -158,8 +158,11 @@ const deleteRoom = async (req, res, next) => {
       return res.status(403).json({ message: 'Only the host can delete the room' });
     }
 
-    room.isActive = false;
-    await room.save();
+    // Fully delete room from backend database
+    await room.deleteOne();
+
+    // Delete all room messages to prevent orphaned documents
+    await Message.deleteMany({ room: req.params.id });
 
     res.json({ message: 'Room deleted successfully' });
   } catch (error) {

@@ -160,6 +160,10 @@ const setupSocket = (io) => {
       io.to(roomId).emit('user-kicked', { userId });
     });
 
+    // ── Delete Room ────────────────────────────────────────
+    socket.on('delete-room', ({ roomId }) => {
+      io.to(roomId).emit('room-deleted');
+    });
 
     // ── Leave Room ─────────────────────────────────────────
     socket.on('leave-room', async ({ roomId }) => {

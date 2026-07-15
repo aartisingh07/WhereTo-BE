@@ -31,6 +31,7 @@ const messageSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now,
+    index: { expiresAfterSeconds: 172800 }, // 48h
   },
 });
 
