@@ -1,5 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const EmailOTP = require('../models/EmailOTP');
+const nodemailer = require('nodemailer');
 const axios = require('axios');
 const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
@@ -11,22 +13,190 @@ const generateToken = (id) => {
   });
 };
 
+// @desc    Send OTP to email
+// @route   POST /api/auth/send-otp
+// @access  Public
+const sendOTP = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    // Enforce valid Google email domain (ends with @gmail.com)
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+    if (!emailRegex.test(email.toLowerCase())) {
+      return res.status(400).json({ message: 'Only valid Google emails (@gmail.com) are allowed' });
+    }
+
+    // Check if user already exists
+    const userExists = await User.findOne({ email: email.toLowerCase() });
+    if (userExists) {
+      return res.status(400).json({ message: 'An account with this email already exists' });
+    }
+
+    // Generate 6-digit numeric OTP
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Store in DB (will auto-delete after 5 minutes due to TTL index)
+    await EmailOTP.create({ email: email.toLowerCase(), code });
+
+    // Send email using nodemailer
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+    const mailOptions = {
+      from: `"Where To? App" <${process.env.EMAIL_USER || 'no-reply@whereto.com'}>`,
+      to: email,
+      subject: 'Verify your email - Where To?',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 12px; background-color: #111827; color: #fff;">
+          <h2 style="color: #4f46e5; text-align: center;">Where To?</h2>
+          <p>Hello,</p>
+          <p>Thank you for signing up for Where To!. Please verify your email by entering the 6-digit code below:</p>
+          <div style="background-color: #1f2937; padding: 15px; text-align: center; border-radius: 8px; font-size: 24px; font-weight: bold; letter-spacing: 4px; color: #38bdf8; margin: 20px 0; border: 1px solid #374151;">
+            ${code}
+          </div>
+          <p style="color: #9ca3af; font-size: 12px; text-align: center;">This code is valid for 5 minutes. If you did not request this code, please ignore this email.</p>
+        </div>
+      `,
+    };
+
+    let emailSent = false;
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      try {
+        await transporter.sendMail(mailOptions);
+        emailSent = true;
+      } catch (err) {
+        console.error('Nodemailer failed to send email:', err.message);
+      }
+    }
+
+    // Output to console for local developers
+    console.log(`✉️  [DEVELOPMENT LOG] OTP for ${email}: ${code}`);
+
+    res.json({
+      message: emailSent 
+        ? 'Verification code sent to your email.' 
+        : 'Verification code generated. (Check server console log in development)',
+      code: (!emailSent && process.env.NODE_ENV !== 'production') ? code : undefined
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // @desc    Register new user
 // @route   POST /api/auth/register
 // @access  Public
 const register = async (req, res, next) => {
-  return res.status(400).json({
-    message: 'Traditional registration is disabled. Please use Google or GitHub social login.'
-  });
+  try {
+    const { username, email, password, code } = req.body;
+
+    if (!username || !email || !password || !code) {
+      return res.status(400).json({ message: 'All fields are required, including verification code' });
+    }
+
+    // Validate email domain is gmail.com
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+    if (!emailRegex.test(email.toLowerCase())) {
+      return res.status(400).json({ message: 'Only valid Google emails (@gmail.com) are allowed' });
+    }
+
+    // Verify username format: Instagram validation format (alphanumeric, period, underscores, no boundary periods, no consecutive periods)
+    const usernameRegex = /^[a-zA-Z0-9_](?:[a-zA-Z0-9_.]*[a-zA-Z0-9_])?$/;
+    if (!usernameRegex.test(username) || username.includes('..')) {
+      return res.status(400).json({ message: 'Username can only contain alphanumeric characters, underscores, and single periods, and cannot start or end with a period' });
+    }
+
+    // Verify code exists and matches
+    const otpRecord = await EmailOTP.findOne({ 
+      email: email.toLowerCase(), 
+      code: code.trim() 
+    });
+
+    if (!otpRecord) {
+      return res.status(400).json({ message: 'Invalid or expired verification code' });
+    }
+
+    // Check if username already exists
+    const usernameExists = await User.findOne({ username });
+    if (usernameExists) {
+      return res.status(400).json({ message: 'Username is already taken' });
+    }
+
+    // Delete OTP record after successful matching to prevent reuse
+    await EmailOTP.deleteOne({ _id: otpRecord._id });
+
+    // Create user
+    const user = await User.create({
+      username,
+      email: email.toLowerCase(),
+      password,
+      avatar: `https://api.dicebear.com/7.x/thumbs/svg?seed=${username}`,
+    });
+
+    // Generate JWT token
+    const token = generateToken(user._id);
+
+    res.status(201).json({
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      avatar: user.avatar,
+      token,
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 // @desc    Login user
 // @route   POST /api/auth/login
 // @access  Public
 const login = async (req, res, next) => {
-  return res.status(400).json({
-    message: 'Traditional login is disabled. Please use Google or GitHub social login.'
-  });
+  try {
+    const { identifier, password } = req.body;
+
+    if (!identifier || !password) {
+      return res.status(400).json({ message: 'Please provide email/username and password' });
+    }
+
+    // Retrieve user and select password
+    const user = await User.findOne({
+      $or: [
+        { email: identifier.toLowerCase() },
+        { username: identifier }
+      ]
+    }).select('+password');
+
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    // Match password
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    const token = generateToken(user._id);
+
+    res.json({
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      avatar: user.avatar,
+      token,
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 // @desc    Get current logged-in user
@@ -367,5 +537,6 @@ module.exports = {
   githubOAuthRedirect, 
   githubOAuthCallback,
   upload,
-  updateProfile
+  updateProfile,
+  sendOTP
 };
