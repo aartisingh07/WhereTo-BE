@@ -1,6 +1,6 @@
 const express = require('express');
 const {
-  createRoom, joinRoom, getRoom,
+  createRoom, joinRoom, rejoinRoom, getRoom,
   setActivity, getMessages, leaveRoom, deleteRoom, getMyRooms,
   getActiveRooms, requestJoinRoom, respondJoinRequest, removeMember
 } = require('../controllers/roomController');
@@ -10,6 +10,7 @@ const router = express.Router();
 
 router.post('/create', protect, createRoom);
 router.post('/join', protect, joinRoom);
+router.post('/:id/rejoin', protect, rejoinRoom);
 router.get('/my-rooms', protect, getMyRooms);
 router.get('/active', protect, getActiveRooms);
 router.get('/:id', protect, getRoom);

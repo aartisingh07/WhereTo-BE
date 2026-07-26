@@ -24,6 +24,12 @@ const roomSchema = new mongoose.Schema({
       ref: 'User',
     },
   ],
+  pastMembers: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+  ],
   joinRequests: [
     {
       user: {

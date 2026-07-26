@@ -7,6 +7,20 @@ const setupOutingHandler = require('./outingHandler');
 // Map: roomId → Set of { socketId, userId, username, avatar }
 const roomUsers = new Map();
 
+const refreshSocketUser = async (socket) => {
+  try {
+    if (!socket?.userId) return;
+    const User = require('../models/User');
+    const user = await User.findById(socket.userId).select('username avatar');
+    if (user) {
+      socket.username = user.username;
+      socket.avatar = user.avatar || '';
+    }
+  } catch (err) {
+    console.error('Error refreshing socket user:', err.message);
+  }
+};
+
 const addUserToRoom = (roomId, socketId, userInfo) => {
   if (!roomUsers.has(roomId)) roomUsers.set(roomId, new Map());
   roomUsers.get(roomId).set(socketId, userInfo);
@@ -57,8 +71,23 @@ const setupSocket = (io) => {
     setupTimerHandler(socket, io);
     setupOutingHandler(socket, io);
 
+    // ── Update Profile Signal ─────────────────────────────
+    socket.on('update-user-profile', async () => {
+      await refreshSocketUser(socket);
+      if (socket.currentRoomId) {
+        addUserToRoom(socket.currentRoomId, socket.id, {
+          userId: socket.userId,
+          username: socket.username,
+          avatar: socket.avatar,
+          socketId: socket.id,
+        });
+        io.to(socket.currentRoomId).emit('room-users-update', getRoomUsers(socket.currentRoomId));
+      }
+    });
+
     // ── Join Room ──────────────────────────────────────────
     socket.on('join-room', async ({ roomId }) => {
+      await refreshSocketUser(socket);
       socket.join(roomId);
       socket.currentRoomId = roomId;
 
@@ -80,13 +109,13 @@ const setupSocket = (io) => {
       io.to(roomId).emit('new-message', sysMsg);
       io.to(roomId).emit('room-users-update', getRoomUsers(roomId));
 
-
       console.log(`👥 ${socket.username} joined room ${roomId}`);
     });
 
     // ── Send Message ───────────────────────────────────────
     socket.on('send-message', async ({ roomId, content }) => {
       if (!content?.trim()) return;
+      await refreshSocketUser(socket);
 
       const message = await Message.create({
         room: roomId,
@@ -180,6 +209,7 @@ const setupSocket = (io) => {
 };
 
 const handleLeave = async (socket, roomId, io) => {
+  await refreshSocketUser(socket);
   socket.leave(roomId);
   removeUserFromRoom(roomId, socket.id);
 

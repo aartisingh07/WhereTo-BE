@@ -15,6 +15,7 @@ const createRoom = async (req, res, next) => {
       name: name || `${req.user.username}'s Room`,
       host: req.user.id,
       members: [req.user.id],
+      pastMembers: [req.user.id],
     });
 
     await room.populate('host', 'username avatar');
@@ -54,9 +55,18 @@ const joinRoom = async (req, res, next) => {
     );
     if (!isMember) {
       room.members.push(req.user.id);
-      await room.save();
-      await room.populate('members', 'username avatar');
     }
+
+    const isPastMember = room.pastMembers && room.pastMembers.some(
+      (m) => m.toString() === req.user.id
+    );
+    if (!isPastMember) {
+      if (!room.pastMembers) room.pastMembers = [];
+      room.pastMembers.push(req.user.id);
+    }
+
+    await room.save();
+    await room.populate('members', 'username avatar');
 
     res.json(room);
   } catch (error) {
@@ -69,13 +79,62 @@ const joinRoom = async (req, res, next) => {
 // @access  Private
 const getRoom = async (req, res, next) => {
   try {
-    const room = await Room.findById(req.params.id)
+    let room = await Room.findById(req.params.id)
       .populate('host', 'username avatar')
       .populate('members', 'username avatar')
       .populate('joinRequests.user', 'username name avatar');
 
     if (!room || !room.isActive) {
-      return res.status(404).json({ message: 'Room not found' });
+      return res.status(404).json({ message: 'Room not found or expired' });
+    }
+
+    const isHost = room.host._id.toString() === req.user.id;
+    const isMember = room.members.some((m) => m._id.toString() === req.user.id);
+    const isPastMember = room.pastMembers && room.pastMembers.some((m) => m.toString() === req.user.id);
+
+    // If user is past member or host but not currently in members, auto-readd to members
+    if (!isMember && (isHost || isPastMember)) {
+      room.members.push(req.user.id);
+      await room.save();
+      await room.populate('members', 'username avatar');
+    }
+
+    res.json(room);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Rejoin a room previously joined/left
+// @route   POST /api/rooms/:id/rejoin
+// @access  Private
+const rejoinRoom = async (req, res, next) => {
+  try {
+    const room = await Room.findById(req.params.id)
+      .populate('host', 'username avatar')
+      .populate('members', 'username avatar');
+
+    if (!room || !room.isActive || (room.expiresAt && room.expiresAt <= new Date())) {
+      return res.status(404).json({ message: 'Room has expired or no longer exists' });
+    }
+
+    const isHost = room.host._id.toString() === req.user.id;
+    const isPastMember = room.pastMembers && room.pastMembers.some((m) => m.toString() === req.user.id);
+    const isAcceptedRequest = room.joinRequests && room.joinRequests.some((r) => r.user.toString() === req.user.id && r.status === 'accepted');
+
+    if (!isHost && !isPastMember && !isAcceptedRequest) {
+      return res.status(403).json({ message: 'You are not authorized to rejoin this room without a code' });
+    }
+
+    const isMember = room.members.some((m) => m._id.toString() === req.user.id);
+    if (!isMember) {
+      room.members.push(req.user.id);
+      if (!isPastMember) {
+        if (!room.pastMembers) room.pastMembers = [];
+        room.pastMembers.push(req.user.id);
+      }
+      await room.save();
+      await room.populate('members', 'username avatar');
     }
 
     res.json(room);
@@ -137,6 +196,15 @@ const leaveRoom = async (req, res, next) => {
       (m) => m.toString() !== req.user.id
     );
 
+    // Retain user in pastMembers so they can rejoin from home dashboard
+    const isPastMember = room.pastMembers && room.pastMembers.some(
+      (m) => m.toString() === req.user.id
+    );
+    if (!isPastMember) {
+      if (!room.pastMembers) room.pastMembers = [];
+      room.pastMembers.push(req.user.id);
+    }
+
     await room.save();
     res.json({ message: 'Left room' });
   } catch (error) {
@@ -170,13 +238,17 @@ const deleteRoom = async (req, res, next) => {
   }
 };
 
-// @desc    Get all active rooms the user is a member of
+// @desc    Get all active or recently joined rooms for the user
 // @route   GET /api/rooms/my-rooms
 // @access  Private
 const getMyRooms = async (req, res, next) => {
   try {
     const rooms = await Room.find({
-      members: req.user.id,
+      $or: [
+        { members: req.user.id },
+        { pastMembers: req.user.id },
+        { host: req.user.id }
+      ],
       isActive: true,
       expiresAt: { $gt: new Date() },
     })
@@ -184,7 +256,19 @@ const getMyRooms = async (req, res, next) => {
       .populate('members', 'username avatar')
       .sort({ createdAt: -1 });
 
-    res.json(rooms);
+    const formattedRooms = rooms.map((room) => {
+      const roomObj = room.toObject();
+      const isCurrentMember = room.members.some(
+        (m) => m._id.toString() === req.user.id
+      );
+      return {
+        ...roomObj,
+        isCurrentMember,
+        isHost: room.host._id.toString() === req.user.id,
+      };
+    });
+
+    res.json(formattedRooms);
   } catch (error) {
     next(error);
   }
@@ -288,6 +372,10 @@ const respondJoinRequest = async (req, res, next) => {
       if (!room.members.includes(request.user)) {
         room.members.push(request.user);
       }
+      if (!room.pastMembers) room.pastMembers = [];
+      if (!room.pastMembers.includes(request.user)) {
+        room.pastMembers.push(request.user);
+      }
       await room.save();
 
       // Create notification for requester
@@ -335,6 +423,9 @@ const removeMember = async (req, res, next) => {
     }
 
     room.members = room.members.filter((m) => m.toString() !== memberId);
+    if (room.pastMembers) {
+      room.pastMembers = room.pastMembers.filter((m) => m.toString() !== memberId);
+    }
     
     // Also mark their joinRequest status as 'rejected' so they cannot auto-join without request
     const userRequest = room.joinRequests.find(r => r.user.toString() === memberId && r.status === 'accepted');
@@ -358,6 +449,7 @@ const removeMember = async (req, res, next) => {
 module.exports = {
   createRoom,
   joinRoom,
+  rejoinRoom,
   getRoom,
   setActivity,
   getMessages,
