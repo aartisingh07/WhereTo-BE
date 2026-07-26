@@ -7,12 +7,13 @@ const { generateRoomCode } = require('../utils/generateRoomCode');
 // @access  Private
 const createRoom = async (req, res, next) => {
   try {
-    const { name } = req.body;
+    const { name, purpose } = req.body;
     const code = await generateRoomCode();
 
     const room = await Room.create({
       code,
       name: name || `${req.user.username}'s Room`,
+      purpose: purpose?.trim() || '',
       host: req.user.id,
       members: [req.user.id],
       pastMembers: [req.user.id],
