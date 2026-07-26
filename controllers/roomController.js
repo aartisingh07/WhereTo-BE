@@ -308,10 +308,9 @@ const inviteFriendToRoom = async (req, res, next) => {
 
     if (!room) return res.status(404).json({ message: 'Room not found' });
 
-    // Verify user is in room
-    const isMember = room.members.some((m) => m.toString() === req.user.id) || room.host.toString() === req.user.id;
-    if (!isMember) {
-      return res.status(403).json({ message: 'Only room participants can send invites' });
+    // Verify user is the host of the room
+    if (room.host.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Only the room host can send invites to friends' });
     }
 
     // Check if user and friend have an accepted chat connection
