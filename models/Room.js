@@ -63,6 +63,10 @@ const roomSchema = new mongoose.Schema({
     enum: ['none', 'game', 'watch', 'outing', 'study', 'chat'],
     default: 'none',
   },
+  isPublic: {
+    type: Boolean,
+    default: true,
+  },
   isActive: {
     type: Boolean,
     default: true,

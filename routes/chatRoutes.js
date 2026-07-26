@@ -15,10 +15,12 @@ const {
   deleteDirectMessage,
   deleteConversation,
   getChatRelationships,
-  removeConnection
+  removeConnection,
+  getAcceptedFriends
 } = require('../controllers/chatController');
 
 router.get('/relationships', protect, getChatRelationships);
+router.get('/friends', protect, getAcceptedFriends);
 router.get('/search', protect, searchUsers);
 router.post('/request', protect, sendChatRequest);
 router.post('/request/:requestId', protect, handleChatRequest);

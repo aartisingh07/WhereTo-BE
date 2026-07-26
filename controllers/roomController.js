@@ -7,13 +7,14 @@ const { generateRoomCode } = require('../utils/generateRoomCode');
 // @access  Private
 const createRoom = async (req, res, next) => {
   try {
-    const { name, purpose } = req.body;
+    const { name, purpose, isPublic } = req.body;
     const code = await generateRoomCode();
 
     const room = await Room.create({
       code,
       name: name || `${req.user.username}'s Room`,
       purpose: purpose?.trim() || '',
+      isPublic: typeof isPublic === 'boolean' ? isPublic : true,
       host: req.user.id,
       members: [req.user.id],
       pastMembers: [req.user.id],
@@ -282,6 +283,7 @@ const getActiveRooms = async (req, res, next) => {
   try {
     const rooms = await Room.find({
       isActive: true,
+      isPublic: true,
       expiresAt: { $gt: new Date() },
       host: { $ne: req.user.id },
       members: { $ne: req.user.id }
@@ -291,6 +293,71 @@ const getActiveRooms = async (req, res, next) => {
       .sort({ createdAt: -1 });
 
     res.json(rooms);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Invite an accepted friend to a room via DM
+// @route   POST /api/rooms/:id/invite-friend
+// @access  Private
+const inviteFriendToRoom = async (req, res, next) => {
+  try {
+    const { friendId } = req.body;
+    const room = await Room.findById(req.params.id);
+
+    if (!room) return res.status(404).json({ message: 'Room not found' });
+
+    // Verify user is in room
+    const isMember = room.members.some((m) => m.toString() === req.user.id) || room.host.toString() === req.user.id;
+    if (!isMember) {
+      return res.status(403).json({ message: 'Only room participants can send invites' });
+    }
+
+    // Check if user and friend have an accepted chat connection
+    const ChatRequest = require('../models/ChatRequest');
+    const connection = await ChatRequest.findOne({
+      status: 'accepted',
+      $or: [
+        { sender: req.user.id, receiver: friendId },
+        { sender: friendId, receiver: req.user.id }
+      ]
+    });
+
+    if (!connection) {
+      return res.status(403).json({ message: 'You can only invite accepted friends from your chats' });
+    }
+
+    // Create Direct Message with room invite link
+    const DirectMessage = require('../models/DirectMessage');
+    const inviteMsgContent = `🏠 Hey! You're invited to join ${room.isPublic ? 'room' : 'private room'} "${room.name}" ${room.purpose ? `(Purpose: "${room.purpose}")` : ''} (Code: ${room.code}). Click here to join: /room/${room._id}`;
+
+    const dm = await DirectMessage.create({
+      sender: req.user.id,
+      receiver: friendId,
+      content: inviteMsgContent
+    });
+
+    await dm.populate('sender', 'username name avatar');
+    await dm.populate('receiver', 'username name avatar');
+
+    // Create Notification
+    const Notification = require('../models/Notification');
+    await Notification.create({
+      user: friendId,
+      type: 'info',
+      title: `${room.isPublic ? 'Room Invite 🏠' : 'Private Room Invite 🔒'}`,
+      message: `${req.user.username} invited you to join "${room.name}"!`,
+    });
+
+    // Broadcast WebSocket events if socket server is attached
+    const io = req.app.get('io');
+    if (io) {
+      io.emit(`direct-message-${friendId}`, dm);
+      io.emit(`unread-count-updated-${friendId}`);
+    }
+
+    res.json({ message: 'Invite sent to friend in DM! 📩', dm });
   } catch (error) {
     next(error);
   }
@@ -461,5 +528,6 @@ module.exports = {
   requestJoinRoom,
   respondJoinRequest,
   removeMember,
+  inviteFriendToRoom,
 };
 

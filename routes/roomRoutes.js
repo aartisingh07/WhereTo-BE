@@ -2,7 +2,8 @@ const express = require('express');
 const {
   createRoom, joinRoom, rejoinRoom, getRoom,
   setActivity, getMessages, leaveRoom, deleteRoom, getMyRooms,
-  getActiveRooms, requestJoinRoom, respondJoinRequest, removeMember
+  getActiveRooms, requestJoinRoom, respondJoinRequest, removeMember,
+  inviteFriendToRoom
 } = require('../controllers/roomController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -21,5 +22,6 @@ router.delete('/:id', protect, deleteRoom);
 router.post('/:id/request-join', protect, requestJoinRoom);
 router.post('/:id/respond-request', protect, respondJoinRequest);
 router.post('/:id/remove-member', protect, removeMember);
+router.post('/:id/invite-friend', protect, inviteFriendToRoom);
 
 module.exports = router;

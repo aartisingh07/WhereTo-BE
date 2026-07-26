@@ -590,6 +590,29 @@ const removeConnection = async (req, res, next) => {
   }
 };
 
+// @desc    Get accepted friends list for sending room invites
+// @route   GET /api/chats/friends
+// @access  Private
+const getAcceptedFriends = async (req, res, next) => {
+  try {
+    const requests = await ChatRequest.find({
+      status: 'accepted',
+      $or: [{ sender: req.user.id }, { receiver: req.user.id }]
+    })
+      .populate('sender', 'username name avatar')
+      .populate('receiver', 'username name avatar');
+
+    const friends = requests.map((r) => {
+      const isSender = r.sender._id.toString() === req.user.id;
+      return isSender ? r.receiver : r.sender;
+    });
+
+    res.json(friends);
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   searchUsers,
   sendChatRequest,
@@ -604,6 +627,7 @@ module.exports = {
   deleteDirectMessage,
   deleteConversation,
   getChatRelationships,
-  removeConnection
+  removeConnection,
+  getAcceptedFriends
 };
 
