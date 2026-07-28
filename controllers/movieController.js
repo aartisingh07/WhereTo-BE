@@ -440,9 +440,9 @@ const getWatchProviders = async (req, res, next) => {
       // Mock providers for fallback
       return res.json({
         providers: [
-          { provider_name: 'Netflix', logo: 'https://image.tmdb.org/t/p/original/t2zUg47n3ccWCzi4jvx1ttKh14o.jpg' },
-          { provider_name: 'Prime Video', logo: 'https://image.tmdb.org/t/p/original/emZ1gu25ySzo79Pv4Z57H6HQcM.jpg' },
-          { provider_name: 'Disney+', logo: 'https://image.tmdb.org/t/p/original/peURlLhxptfvpb4ClT4kFOxHQ15.jpg' },
+          { provider_name: 'Netflix', logo: 'https://upload.wikimedia.org/wikipedia/commons/0/08/Netflix_2015_N_logo.svg' },
+          { provider_name: 'Prime Video', logo: 'https://upload.wikimedia.org/wikipedia/commons/f/f1/Prime_Video.png' },
+          { provider_name: 'Disney+', logo: 'https://upload.wikimedia.org/wikipedia/commons/3/3e/Disney%2B_logo.svg' },
         ],
       });
     }
@@ -476,8 +476,9 @@ const getWatchProviders = async (req, res, next) => {
       console.error('❌ TMDB Providers API failed:', apiError.message);
       return res.json({
         providers: [
-          { provider_name: 'Netflix', logo: 'https://image.tmdb.org/t/p/original/t2zUg47n3ccWCzi4jvx1ttKh14o.jpg' },
-          { provider_name: 'Prime Video', logo: 'https://image.tmdb.org/t/p/original/emZ1gu25ySzo79Pv4Z57H6HQcM.jpg' },
+          { provider_name: 'Netflix', logo: 'https://upload.wikimedia.org/wikipedia/commons/0/08/Netflix_2015_N_logo.svg' },
+          { provider_name: 'Prime Video', logo: 'https://upload.wikimedia.org/wikipedia/commons/f/f1/Prime_Video.png' },
+          { provider_name: 'Disney+', logo: 'https://upload.wikimedia.org/wikipedia/commons/3/3e/Disney%2B_logo.svg' },
         ],
       });
     }
