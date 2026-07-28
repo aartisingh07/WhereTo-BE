@@ -93,10 +93,28 @@ const getRoom = async (req, res, next) => {
     const isHost = room.host._id.toString() === req.user.id;
     const isMember = room.members.some((m) => m._id.toString() === req.user.id);
     const isPastMember = room.pastMembers && room.pastMembers.some((m) => m.toString() === req.user.id);
+    const isAcceptedRequest = room.joinRequests && room.joinRequests.some((r) => (r.user._id || r.user).toString() === req.user.id && r.status === 'accepted');
 
-    // If user is past member or host but not currently in members, auto-readd to members
-    if (!isMember && (isHost || isPastMember)) {
+    // Check if user was sent a DM invite for this room
+    const DirectMessage = require('../models/DirectMessage');
+    const hasDMInvite = await DirectMessage.exists({
+      receiver: req.user.id,
+      content: { $regex: req.params.id }
+    });
+
+    const isAuthorized = isHost || isMember || isPastMember || isAcceptedRequest || room.isPublic || hasDMInvite;
+
+    if (!isAuthorized) {
+      return res.status(403).json({ message: 'This room is private. Ask the host for an invite!' });
+    }
+
+    // Auto-add user to room members and pastMembers if authorized and not currently in members
+    if (!isMember) {
       room.members.push(req.user.id);
+      if (!isPastMember) {
+        if (!room.pastMembers) room.pastMembers = [];
+        room.pastMembers.push(req.user.id);
+      }
       await room.save();
       await room.populate('members', 'username avatar');
     }

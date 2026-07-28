@@ -109,6 +109,19 @@ const setupSocket = (io) => {
       io.to(roomId).emit('new-message', sysMsg);
       io.to(roomId).emit('room-users-update', getRoomUsers(roomId));
 
+      // Restore active voting session if one is in progress
+      const { getActiveVoteSession } = require('./votingHandler');
+      const activeVote = getActiveVoteSession(roomId);
+      if (activeVote) {
+        socket.emit('vote-started', {
+          item: activeVote.item,
+          endTime: activeVote.endTime,
+          votes: activeVote.votes,
+          tallies: activeVote.tallies,
+          isRestored: true,
+        });
+      }
+
       console.log(`👥 ${socket.username} joined room ${roomId}`);
     });
 

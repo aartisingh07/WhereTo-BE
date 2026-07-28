@@ -109,4 +109,25 @@ const setupVotingHandler = (socket, io) => {
   };
 };
 
+const getActiveVoteSession = (roomId) => {
+  const session = activeVotes.get(roomId);
+  if (!session) return null;
+  if (Date.now() >= session.endTime) {
+    return null;
+  }
+  const tallies = { yes: 0, no: 0, maybe: 0 };
+  for (const vote of session.votes.values()) {
+    if (tallies[vote] !== undefined) {
+      tallies[vote]++;
+    }
+  }
+  return {
+    item: session.item,
+    endTime: session.endTime,
+    votes: Object.fromEntries(session.votes),
+    tallies,
+  };
+};
+
 module.exports = setupVotingHandler;
+module.exports.getActiveVoteSession = getActiveVoteSession;
