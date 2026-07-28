@@ -8,6 +8,7 @@
 
 - 🔐 **OAuth-Only Authentication** — Secure registration and logins handled exclusively via **Google and GitHub OAuth** (producing cryptographically signed JWT tokens). Traditional email/password registration is disabled to prevent fake profile spams.
 - 📡 **Real-Time WebSockets (Socket.io)** — Secure token verification on handshake and modular event handlers for room activities.
+- 📍 **Proximity Biasing, Tiered Ranking & Match Algorithm** — Geoapify places integration using `bias: proximity:${lng},${lat}` based on live browser coordinates. Implements 3-tier distance sorting (Tier 1: <100km in India, Tier 2: >100km in India, Tier 3: International) and match ranking (exact landmark names rank higher than street address mentions). Unconditionally prepends searched landmarks (e.g., Marine Drive) at index 0 of results.
 - 🎮 **Generic Proposal & Voting Engine** — Real-time Yes/No/Maybe voting tally systems with 30s auto-expiry.
 - 🎬 **TMDB Discover & Providers** — Advanced movie discover aggregation mapping moods and query parameters, falling back to a local catalog, and fetching watch provider platforms.
 - 📍 **Midpoint Centroid Calculations** — Group coordinates midpoint aggregation to fetch fair nearby destinations using Geoapify Places API.
@@ -46,7 +47,7 @@ backend/
 │   └── db.js                  # MongoDB database connection
 ├── controllers/               # Route handler logic
 │   ├── authController.js      # Register, login, profile updates
-│   ├── placeController.js     # Geoapify place finder
+│   ├── placeController.js     # Geoapify place finder, proximity biasing & tiered ranking
 │   ├── roomController.js      # Room creation, joining, requests, kicking, and hard deletes
 │   ├── movieController.js     # TMDB movie discovery and watch providers
 │   └── memoryController.js    # Cloudinary image upload and feed controller
@@ -83,8 +84,8 @@ backend/
 
 ```bash
 # Clone the repository
-git clone https://github.com/aartisingh07/where-to-BE.git
-cd where-to-BE
+git clone https://github.com/aartisingh07/WhereTo-BE.git
+cd WhereTo-BE
 
 # Install dependencies
 npm install
@@ -154,8 +155,8 @@ The server will spin up at `http://localhost:5000`.
 - `POST /api/rooms/:id/remove-member` — Kick a user from the room (Host only)
 
 ### 📍 Places (`/api/places` & `/api/user`)
-- `POST /api/places/nearby` — Get nearby places by mood/radius (Solo Explore)
-- `GET /api/places/autocomplete` — Get location autocomplete suggestions (Solo Explore)
+- `POST /api/places/nearby` — Get nearby places with proximity biasing, tier sorting & match ranking
+- `GET /api/places/autocomplete` — Get location autocomplete suggestions with user `lat`/`lng` proximity bias
 - `POST /api/user/places/save` — Save place to user favorites profile (Auth required)
 - `GET /api/user/places` — Retrieve all user's saved places (Auth required)
 - `DELETE /api/user/places/:id` — Remove saved place (Auth required)
@@ -229,7 +230,7 @@ The server will spin up at `http://localhost:5000`.
 
 ## 🔗 Related
 
-- 🎨 **Frontend Client**: [where-to-FE](https://github.com/aartisingh07/where-to-FE)
+- 🎨 **Frontend Client**: [WhereTo-FE](https://github.com/aartisingh07/WhereTo-FE)
 
 ---
 
