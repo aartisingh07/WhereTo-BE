@@ -236,4 +236,6 @@ The server will spin up at `http://localhost:5000`.
 
 ## 👩‍💻 Author
 
-**Aarti Singh** — [@aartisingh07](https://github.com/aartisingh07)
+**Aarti Singh**
+- 🐙 **GitHub**: [aartisingh07](https://github.com/aartisingh07)
+- 💼 **LinkedIn**: [aarti-singh-555ab827b](https://www.linkedin.com/in/aarti-singh-555ab827b/)
