@@ -95,6 +95,7 @@ const getLabel = (categories = []) => {
 const getNearbyPlaces = async (req, res, next) => {
   try {
     const { lat, lng, locationQuery, groupCategory = 'friends', vibe = 'malls', distance = 5000, mood, subFilters = {} } = req.body;
+    const isCustomSearch = !!(locationQuery && locationQuery.trim());
     const apiKey = process.env.GEOAPIFY_API_KEY;
 
     if (!apiKey) {
@@ -107,47 +108,63 @@ const getNearbyPlaces = async (req, res, next) => {
     let prependedPlace = null;
 
     if (locationQuery && locationQuery.trim()) {
-      // Prioritize places in India first (countrycode:in)
+      const userLat = lat ? Number(lat) : null;
+      const userLng = lng ? Number(lng) : null;
+      const hasUserCoords = userLat !== null && !isNaN(userLat) && userLng !== null && !isNaN(userLng);
+
+      const baseGeocodeParams = {
+        text: locationQuery.trim(),
+        apiKey,
+        ...(hasUserCoords ? { bias: `proximity:${userLng},${userLat}` } : {}),
+      };
+
+      // Prioritize places in India first (countrycode:in) with proximity bias
       let geocodeResponse = await axios.get('https://api.geoapify.com/v1/geocode/autocomplete', {
         params: {
-          text: locationQuery.trim(),
+          ...baseGeocodeParams,
           filter: 'countrycode:in',
-          apiKey,
         },
         timeout: 10000,
       });
 
-      let firstResult = geocodeResponse.data?.features?.[0];
+      let features = geocodeResponse.data?.features || [];
 
       // Fallback to global search if no India place matched
-      if (!firstResult) {
+      if (features.length === 0) {
         geocodeResponse = await axios.get('https://api.geoapify.com/v1/geocode/autocomplete', {
-          params: {
-            text: locationQuery.trim(),
-            apiKey,
-          },
+          params: baseGeocodeParams,
           timeout: 10000,
         });
-        firstResult = geocodeResponse.data?.features?.[0];
+        features = geocodeResponse.data?.features || [];
       }
 
-      if (!firstResult) {
+      if (features.length === 0) {
         return res.status(404).json({ message: `Could not resolve location: "${locationQuery}"` });
       }
+
+      // Sort candidate features by proximity to user coordinates if available
+      if (hasUserCoords) {
+        features.sort((a, b) => {
+          const distA = getDistance(userLat, userLng, a.properties.lat, a.properties.lon);
+          const distB = getDistance(userLat, userLng, b.properties.lat, b.properties.lon);
+          return distA - distB;
+        });
+      }
+
+      let firstResult = features[0];
 
       resolvedLat = firstResult.properties.lat;
       resolvedLng = firstResult.properties.lon;
       resolvedAddress = firstResult.properties.formatted;
 
-      const adminTypes = ['city', 'country', 'postcode', 'suburb', 'state', 'county', 'district', 'state_district', 'country_code'];
-      const isSpecificPlace = firstResult.properties.name && !adminTypes.includes(firstResult.properties.result_type);
-      
-      if (isSpecificPlace) {
-        const catStr = firstResult.properties.category || '';
-        const label = getLabel([catStr].filter(Boolean));
+      if (firstResult && (firstResult.properties.name || firstResult.properties.formatted)) {
+        const placeName = firstResult.properties.name || firstResult.properties.formatted.split(',')[0];
+        const catStr = firstResult.properties.category || firstResult.properties.result_type || '';
+        let label = getLabel([catStr].filter(Boolean));
+        if (label === 'Place') label = 'Scenic Viewpoint';
+
         const categoryLower = label.toLowerCase();
-        
-        let description = 'A great place to visit and explore nearby.';
+        let description = `Iconic landmark and destination in ${firstResult.properties.city || firstResult.properties.state || 'the area'}.`;
         if (categoryLower.includes('mall') || categoryLower.includes('shopping')) description = 'Popular shopping destination with stores, food courts, and entertainment.';
         else if (categoryLower.includes('zoo')) description = 'Exciting zoo and wildlife sanctuary perfect for family outings and kids.';
         else if (categoryLower.includes('museum') || categoryLower.includes('gallery')) description = 'Rich historical & cultural exhibition featuring art, science, and heritage.';
@@ -164,7 +181,7 @@ const getNearbyPlaces = async (req, res, next) => {
 
         prependedPlace = {
           osmId: firstResult.properties.place_id || `${resolvedLat}-${resolvedLng}`,
-          name: firstResult.properties.name,
+          name: placeName,
           category: label,
           lat: resolvedLat,
           lng: resolvedLng,
@@ -191,14 +208,12 @@ const getNearbyPlaces = async (req, res, next) => {
     }
 
     let categories = vibeCategoryMap[vibe] || vibeCategoryMap[mood];
-    if (!categories) {
-      if (groupCategory === 'couples') categories = 'beach,tourism.attraction.viewpoint,catering.restaurant,catering.cafe';
-      else if (groupCategory === 'family') categories = 'leisure.park,commercial.shopping_mall,beach,entertainment.zoo';
-      else categories = 'commercial.shopping_mall,catering.restaurant,sport.sports_centre,natural.mountain.peak';
+    if (!categories || vibe === 'all' || isCustomSearch) {
+      categories = 'commercial.shopping_mall,catering.restaurant,catering.cafe,tourism.attraction,leisure.park,beach,natural.water,tourism.attraction.viewpoint,entertainment.zoo,entertainment.museum,sport.sports_centre,catering.bar,catering.fast_food,commercial.marketplace';
     }
 
     // Apply sub-filters dynamically
-    if (mood === 'foodie') {
+    if (mood === 'foodie' && vibe !== 'all' && !isCustomSearch) {
       const { diet, foodType } = subFilters;
       const cats = [];
       if (foodType === 'junk_food') {
@@ -215,7 +230,7 @@ const getNearbyPlaces = async (req, res, next) => {
         cats.push('catering.restaurant.vegetarian', 'catering.restaurant.vegan');
       }
       categories = cats.join(',');
-    } else if (mood === 'adventure') {
+    } else if (mood === 'adventure' && vibe !== 'all' && !isCustomSearch) {
       const { adventureType } = subFilters;
       if (adventureType === 'nature') {
         categories = 'leisure.park,natural.forest';
@@ -236,7 +251,6 @@ const getNearbyPlaces = async (req, res, next) => {
     let minDistanceKm = 0;
     let maxDistanceKm = radiusMeters / 1000;
 
-    const isCustomSearch = !!(locationQuery && locationQuery.trim());
     if (isCustomSearch) {
       minDistanceKm = 0;
       maxDistanceKm = 50.0; // 50km wide radius for custom text search to let them search anything
@@ -291,21 +305,23 @@ const getNearbyPlaces = async (req, res, next) => {
 
         const label = getLabel(props.categories || []);
 
-        // Strict disjoint vibe filter
-        if (mood === 'chill' && !['Park', 'Lake / Water', 'Beach'].includes(label)) {
-          return null;
-        }
-        if (mood === 'romantic' && !['Scenic Viewpoint', 'Beach', 'Park', 'Garden'].includes(label)) {
-          return null;
-        }
-        if (mood === 'adventure' && !['Mountain Peak', 'Adventure Spot', 'Sports Centre', 'Beach'].includes(label)) {
-          return null;
-        }
-        if (mood === 'study' && !['Library', 'Study Space', 'Cafe'].includes(label)) {
-          return null;
-        }
-        if (mood === 'foodie' && !['Restaurant', 'Cafe', 'Fast Food', 'Food Court', 'Bakery', 'Food Cart', 'Food Truck'].includes(label)) {
-          return null;
+        // Strict disjoint vibe filter (skip if custom search or vibe is 'all')
+        if (vibe !== 'all' && !isCustomSearch) {
+          if (mood === 'chill' && !['Park', 'Lake / Water', 'Beach'].includes(label)) {
+            return null;
+          }
+          if (mood === 'romantic' && !['Scenic Viewpoint', 'Beach', 'Park', 'Garden'].includes(label)) {
+            return null;
+          }
+          if (mood === 'adventure' && !['Mountain Peak', 'Adventure Spot', 'Sports Centre', 'Beach'].includes(label)) {
+            return null;
+          }
+          if (mood === 'study' && !['Library', 'Study Space', 'Cafe'].includes(label)) {
+            return null;
+          }
+          if (mood === 'foodie' && !['Restaurant', 'Cafe', 'Fast Food', 'Food Court', 'Bakery', 'Food Cart', 'Food Truck'].includes(label)) {
+            return null;
+          }
         }
 
         const categoryLower = label.toLowerCase();
@@ -451,7 +467,7 @@ const getNearbyPlaces = async (req, res, next) => {
 // @access  Public
 const getAutocompleteSuggestions = async (req, res, next) => {
   try {
-    const { text } = req.query;
+    const { text, lat, lng } = req.query;
     if (!text || !text.trim()) {
       return res.json({ suggestions: [] });
     }
@@ -461,13 +477,23 @@ const getAutocompleteSuggestions = async (req, res, next) => {
       return res.status(500).json({ message: 'Places API key not configured on server.' });
     }
 
-    // 1. Primary India-biased search (countrycode:in)
+    const userLat = lat ? Number(lat) : null;
+    const userLng = lng ? Number(lng) : null;
+    const hasUserCoords = userLat !== null && !isNaN(userLat) && userLng !== null && !isNaN(userLng);
+    const qLower = text.trim().toLowerCase();
+
+    const baseParams = {
+      text: text.trim(),
+      apiKey,
+      ...(hasUserCoords ? { bias: `proximity:${userLng},${userLat}` } : {}),
+    };
+
+    // 1. Primary India-biased search (countrycode:in) with location proximity bias
     let indiaResponse = await axios.get('https://api.geoapify.com/v1/geocode/autocomplete', {
       params: {
-        text: text.trim(),
+        ...baseParams,
         filter: 'countrycode:in',
-        limit: 5,
-        apiKey,
+        limit: 10,
       },
       timeout: 5000,
     });
@@ -479,35 +505,83 @@ const getAutocompleteSuggestions = async (req, res, next) => {
     if (indiaFeatures.length < 5) {
       const globalResponse = await axios.get('https://api.geoapify.com/v1/geocode/autocomplete', {
         params: {
-          text: text.trim(),
-          limit: 5,
-          apiKey,
+          ...baseParams,
+          limit: 10,
         },
         timeout: 5000,
       });
       globalFeatures = globalResponse.data?.features || [];
     }
 
-    // Combine India results first, then deduplicated global results
+    // Process and sort features by Location Proximity & City Constraint Tiers + Name Match Rank:
+    // Tier 1: Local / User's city area (within 100km of user coords or in India)
+    // Tier 2: Rest of India outside local region (> 100km)
+    // Tier 3: International / Far away places
     const combinedMap = new Map();
     [...indiaFeatures, ...globalFeatures].forEach((feature) => {
       const props = feature.properties;
       if (props.place_id && !combinedMap.has(props.place_id)) {
+        const placeLat = props.lat;
+        const placeLon = props.lon;
+
+        let dist = 99999;
+        if (hasUserCoords && placeLat && placeLon) {
+          dist = getDistance(userLat, userLng, placeLat, placeLon);
+        }
+
+        const isIndia = (props.country_code || '').toLowerCase() === 'in' || (props.country || '').toLowerCase() === 'india';
+
+        let tier = 3; // International
+        if (isIndia) {
+          if (hasUserCoords) {
+            tier = dist <= 100 ? 1 : 2;
+          } else {
+            tier = 1;
+          }
+        }
+
+        // Match Rank calculation:
+        // Rank 0: Exact or prefix match on place name (e.g. Name is "Marine Drive")
+        // Rank 1: Name contains query
+        // Rank 2: Query found in address line / street (e.g. "InterContinental Hotel, Marine Drive")
+        const nameLower = (props.name || '').toLowerCase();
+        const formattedLower = (props.formatted || '').toLowerCase();
+        let matchRank = 2;
+        if (nameLower === qLower || nameLower.startsWith(qLower)) {
+          matchRank = 0;
+        } else if (nameLower.includes(qLower)) {
+          matchRank = 1;
+        } else if (formattedLower.startsWith(qLower)) {
+          matchRank = 1.5;
+        }
+
         combinedMap.set(props.place_id, {
           placeId: props.place_id,
           formatted: props.formatted,
           name: props.name || null,
-          city: props.city || null,
+          city: props.city || props.suburb || props.county || props.district || null,
           state: props.state || null,
           country: props.country || null,
           lat: props.lat,
           lon: props.lon,
           resultType: props.result_type || null,
+          tier,
+          matchRank,
+          distance: dist,
         });
       }
     });
 
-    res.json({ suggestions: Array.from(combinedMap.values()).slice(0, 7) });
+    const suggestions = Array.from(combinedMap.values());
+
+    // Sort Tier ascending -> Match Rank ascending -> Distance ascending
+    suggestions.sort((a, b) => {
+      if (a.tier !== b.tier) return a.tier - b.tier;
+      if (a.matchRank !== b.matchRank) return a.matchRank - b.matchRank;
+      return a.distance - b.distance;
+    });
+
+    res.json({ suggestions: suggestions.slice(0, 7) });
   } catch (error) {
     if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
       return res.status(503).json({ message: 'Autocomplete request timed out.' });
