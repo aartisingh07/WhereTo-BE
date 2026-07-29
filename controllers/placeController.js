@@ -473,36 +473,35 @@ const getNearbyPlaces = async (req, res, next) => {
       }
     }
 
-    const radiusMeters = Number(distance);
+    const radiusMeters = Number(distance) || 10000;
 
-    // Set disjoint distance bands to return distinct lists
+    // Set search distance radius
     let minDistanceKm = 0;
     let maxDistanceKm = radiusMeters / 1000;
 
     if (isCustomSearch) {
-      minDistanceKm = 0;
-      maxDistanceKm = 50.0; // 50km wide radius for custom text search to let them search anything
-    } else {
-      if (radiusMeters === 5000) {
-        minDistanceKm = 1.5; // Mid-range is 1.5km to 5km
-      } else if (radiusMeters === 10000) {
-        minDistanceKm = 4.0; // Anywhere/distant is 4.0km to 15.0km
-        maxDistanceKm = 15.0; // Expand search area for far places
-      }
+      maxDistanceKm = 50.0; // 50km wide radius for custom text search
+    } else if (radiusMeters === 10000) {
+      maxDistanceKm = 25.0; // Expand to 25km for Anywhere search
     }
 
-    const response = await axios.get('https://api.geoapify.com/v2/places', {
-      params: {
-        categories,
-        filter: `circle:${resolvedLng},${resolvedLat},${Math.round(maxDistanceKm * 1000)}`,
-        bias: `proximity:${resolvedLng},${resolvedLat}`,
-        limit: 100, // Fetch more places to get diverse choices beyond closest proximity
-        apiKey,
-      },
-      timeout: 15000,
-    });
-
-    const features = response.data?.features || [];
+    let features = [];
+    try {
+      const response = await axios.get('https://api.geoapify.com/v2/places', {
+        params: {
+          categories,
+          filter: `circle:${resolvedLng},${resolvedLat},${Math.round(maxDistanceKm * 1000)}`,
+          bias: `proximity:${resolvedLng},${resolvedLat}`,
+          limit: 100, // Fetch more places to get diverse choices
+          apiKey,
+        },
+        timeout: 8000,
+      });
+      features = response.data?.features || [];
+    } catch (apiErr) {
+      console.warn('Geoapify Places API call warning:', apiErr.message);
+      features = [];
+    }
 
     const places = features
       .map((feature) => {
