@@ -103,6 +103,75 @@ const getLabel = (categories = []) => {
   return 'Place';
 };
 
+// Guaranteed curated fallback places for every vibe so NO vibe ever returns empty results
+const vibeFallbackPlaces = {
+  beaches: [
+    { name: 'Marine Drive Beach Promenade', category: 'Beach', address: 'Netaji Subhash Chandra Bose Road, Chowpatty, Mumbai, Maharashtra, India', lat: 18.9432, lng: 72.8230, description: 'Famous C-shaped boulevard along the coast of South Mumbai, iconic for sunsets and sea breezes.' },
+    { name: 'Baga Beach', category: 'Beach', address: 'Baga Beach Road, Calangute, Goa, India', lat: 15.5553, lng: 73.7517, description: 'One of Goa’s most famous beaches known for golden sands, beach shacks, and vibrant sunsets.' },
+    { name: 'Radhanagar Beach', category: 'Beach', address: 'Havelock Island, Andaman and Nicobar Islands, India', lat: 11.9841, lng: 92.9515, description: 'World-renowned pristine white-sand beach surrounded by turquoise waters and lush rainforest.' },
+    { name: 'Palolem Beach', category: 'Beach', address: 'Canacona, South Goa, Goa, India', lat: 15.0100, lng: 74.0232, description: 'Picturesque crescent-shaped beach framed by coconut palms and calm ocean waters.' },
+  ],
+  art_museums: [
+    { name: 'Chhatrapati Shivaji Maharaj Vastu Sangrahalaya (CSMVS Museum)', category: 'Museum & Art Gallery', address: '159-161 Mahatma Gandhi Road, Kala Ghoda, Fort, Mumbai, Maharashtra, India', lat: 18.9269, lng: 72.8327, description: 'Premier art and history museum in Mumbai showcasing ancient Indian art, sculptures, and heritage.' },
+    { name: 'National Gallery of Modern Art (NGMA)', category: 'Art Gallery', address: 'Jaipur House, India Gate, New Delhi, Delhi, India', lat: 28.6096, lng: 77.2343, description: 'India’s premier modern art museum featuring paintings and sculptures by renowned Indian artists.' },
+    { name: 'Kiran Nadar Museum of Art (KNMA)', category: 'Art Gallery & Museum', address: 'DLF South Court Mall, Saket, New Delhi, Delhi, India', lat: 28.5283, lng: 77.2185, description: 'Non-profit museum exhibiting contemporary & modern Indian art installations and exhibitions.' },
+  ],
+  museums: [
+    { name: 'Chhatrapati Shivaji Maharaj Vastu Sangrahalaya (CSMVS Museum)', category: 'Museum & Art Gallery', address: 'Kala Ghoda, Fort, Mumbai, Maharashtra, India', lat: 18.9269, lng: 72.8327, description: 'Premier art and history museum in Mumbai showcasing ancient Indian art and sculptures.' },
+    { name: 'National Museum New Delhi', category: 'Museum', address: 'Janpath, New Delhi, Delhi, India', lat: 28.6118, lng: 77.2193, description: 'One of the largest museums in India with historical artifacts from Harappan civilization to modern eras.' },
+  ],
+  parks: [
+    { name: 'Sanjay Gandhi National Park', category: 'Park & Nature Trail', address: 'Borivali East, Mumbai, Maharashtra, India', lat: 19.2288, lng: 72.9182, description: 'Sprawling protected national forest inside Mumbai featuring Kanheri Caves and green nature trails.' },
+    { name: 'Cubbon Park', category: 'Park & Garden', address: 'Kasturba Road, Sampangi Rama Nagara, Bangalore, Karnataka, India', lat: 12.9763, lng: 77.5929, description: 'Lush 300-acre botanical park in Bangalore with abundant flora, walking paths, and historic buildings.' },
+    { name: 'Lodhi Garden', category: 'Garden & Historic Park', address: 'Lodhi Road, New Delhi, Delhi, India', lat: 28.5931, lng: 77.2197, description: 'Serene city park featuring XV-century Sayyid & Lodi tombs, landscaped lawns, and lotus ponds.' },
+  ],
+  nature_trails: [
+    { name: 'Sanjay Gandhi Forest Trail', category: 'Nature Trail', address: 'Borivali East, Mumbai, Maharashtra, India', lat: 19.2288, lng: 72.9182, description: 'Tranquil forest walking paths surrounded by lush greenery and wild flora.' },
+    { name: 'Cubbon Park Walkways', category: 'Nature Trail', address: 'Bangalore, Karnataka, India', lat: 12.9763, lng: 77.5929, description: 'Shaded morning walking trails surrounded by century-old trees.' },
+  ],
+  nature: [
+    { name: 'Cubbon Park Lawns', category: 'Park & Nature', address: 'Bangalore, Karnataka, India', lat: 12.9763, lng: 77.5929, description: 'Expansive green lawns perfect for relaxation, nature walks, and peaceful picnics.' },
+  ],
+  bookstores: [
+    { name: 'Kitab Khana Bookstore', category: 'Bookstore', address: 'Somaiya Bhavan, Mahatma Gandhi Road, Fort, Mumbai, Maharashtra, India', lat: 18.9322, lng: 72.8335, description: 'Charming heritage bookstore offering vast collections of fiction, non-fiction, and quiet reading nooks.' },
+    { name: 'Blossom Book House', category: 'Bookstore', address: 'Church Street, Bangalore, Karnataka, India', lat: 12.9750, lng: 77.6033, description: 'Famous multi-storey bookstore packed with rare books, novels, and literary treasures.' },
+    { name: 'Bahrisons Booksellers', category: 'Bookstore', address: 'Khan Market, New Delhi, Delhi, India', lat: 28.6001, lng: 77.2272, description: 'Iconic independent bookstore serving book lovers in Delhi since 1953.' },
+  ],
+  solo_cinema: [
+    { name: 'PVR Director’s Cut', category: 'Cinema & Movies', address: 'Vasant Kunj, New Delhi, Delhi, India', lat: 28.5422, lng: 77.1558, description: 'Luxury cinema lounge featuring plush recliner seating, fine dining, and solo movie date vibes.' },
+    { name: 'Inox Insignia Cinema', category: 'Cinema & Movies', address: 'Atria Mall, Worli, Mumbai, Maharashtra, India', lat: 18.9904, lng: 72.8144, description: 'Premium luxury movie theater with gourmet snacks and immersive audio.' },
+  ],
+  solo_cafes: [
+    { name: 'Prithvi Cafe & Book Corner', category: 'Cafe', address: 'Juhu Church Road, Juhu, Mumbai, Maharashtra, India', lat: 19.1062, lng: 72.8258, description: 'Iconic open-air courtyard cafe famous for Irish coffee, stuffed parathas, and artistic reading vibes.' },
+    { name: 'Subko Coffee Roasters', category: 'Cafe & Bakery', address: 'Ranwar, Bandra West, Mumbai, Maharashtra, India', lat: 19.0544, lng: 72.8311, description: 'Specialty coffee roastery serving artisanal single-origin Indian brews and sourdough bakes.' },
+    { name: 'Blue Tokai Coffee Roasters', category: 'Cafe', address: 'Indiranagar, Bangalore, Karnataka, India', lat: 12.9784, lng: 77.6408, description: 'Popular specialty coffee shop with fresh brews and quiet working spaces.' },
+  ],
+  cafes: [
+    { name: 'Prithvi Cafe', category: 'Cafe', address: 'Juhu, Mumbai, Maharashtra, India', lat: 19.1062, lng: 72.8258, description: 'Iconic open-air cafe for coffee, tea, and cozy conversations.' },
+    { name: 'Subko Coffee', category: 'Cafe', address: 'Bandra West, Mumbai, Maharashtra, India', lat: 19.0544, lng: 72.8311, description: 'Artisanal coffee roasters with fresh brews.' },
+  ],
+  scenic_drives: [
+    { name: 'Bandra-Worli Sea Link Promenade', category: 'Scenic Drive', address: 'Bandra West to Worli, Mumbai, Maharashtra, India', lat: 19.0330, lng: 72.8185, description: 'Cable-stayed bridge over the Arabian Sea offering breathtaking coastline views and sea breezes.' },
+    { name: 'East Coast Road (ECR)', category: 'Scenic Drive', address: 'Chennai to Mahabalipuram, Tamil Nadu, India', lat: 12.8220, lng: 80.2431, description: 'Famous coastal highway hugging the Bay of Bengal with stunning ocean panoramas.' },
+  ],
+  malls: [
+    { name: 'Phoenix Palladium Mall', category: 'Shopping Mall', address: 'High Street Phoenix, Lower Parel, Mumbai, Maharashtra, India', lat: 18.9950, lng: 72.8248, description: 'Luxury shopping destination featuring world-class brands, restaurants, and entertainment.' },
+    { name: 'DLF Mall of India', category: 'Shopping Mall', address: 'Sector 18, Noida, Uttar Pradesh, India', lat: 28.5677, lng: 77.3211, description: 'India’s largest shopping mall with indoor amusement, dining, and brand stores.' },
+  ],
+  zoos: [
+    { name: 'Mysore Zoo & Sanctuary', category: 'Zoo & Wildlife', address: 'Indira Nagar, Mysuru, Karnataka, India', lat: 12.3023, lng: 76.6637, description: 'Historic 157-acre zoo home to exotic wild animals, birds, and botanical gardens.' },
+    { name: 'Veermata Jijabai Bhosale Zoo (Byculla Zoo)', category: 'Zoo & Botanical Garden', address: 'Byculla, Mumbai, Maharashtra, India', lat: 18.9786, lng: 72.8344, description: 'Famous zoo and botanical garden featuring Humboldt penguins and wildlife.' },
+  ],
+  concerts: [
+    { name: 'Hard Rock Cafe', category: 'Bar & Live Music', address: 'Veera Desai Industrial Estate, Andheri West, Mumbai, Maharashtra, India', lat: 19.1360, lng: 72.8330, description: 'Iconic rock n roll themed restaurant and live music venue.' },
+    { name: 'Hauz Khas Social', category: 'Bar & Lounge', address: 'Hauz Khas Village, New Delhi, Delhi, India', lat: 28.5539, lng: 77.1942, description: 'High-energy nightlife pub overlooking historic reservoir lakes.' },
+  ],
+  trekking: [
+    { name: 'Sinhagad Fort Trek', category: 'Mountain Trek', address: 'Donaje Village, Pune, Maharashtra, India', lat: 18.3663, lng: 73.7558, description: 'Ancient hill fortress offering scenic mountain hiking trails and traditional Maharashtrian food.' },
+    { name: 'Triund Hill Trail', category: 'Mountain Peak', address: 'Dharamshala, Himachal Pradesh, India', lat: 32.2562, lng: 76.3533, description: 'Spectacular trekking trail in Dhauladhar mountains with panoramic valley views.' },
+  ],
+};
+
 // Helper for strict vibe filtering constraint
 const validatePlaceForVibe = (name, label, rawCategories = [], vibeId) => {
   if (!vibeId || vibeId === 'all') return true;
@@ -199,10 +268,15 @@ const validatePlaceForVibe = (name, label, rawCategories = [], vibeId) => {
       nameLower.includes('beach') ||
       nameLower.includes('coast') ||
       nameLower.includes('sea') ||
-      rawCatsStr.includes('beach')
+      nameLower.includes('promenade') ||
+      nameLower.includes('chowpatty') ||
+      nameLower.includes('shore') ||
+      rawCatsStr.includes('beach') ||
+      rawCatsStr.includes('natural.water') ||
+      rawCatsStr.includes('tourism.attraction.viewpoint')
     );
     if (!isBeach) return false;
-    if (isHospitality && !nameLower.includes('beach')) return false;
+    if (isHospitality && !nameLower.includes('beach') && !nameLower.includes('sea')) return false;
     return true;
   }
 
@@ -347,11 +421,18 @@ const getNearbyPlaces = async (req, res, next) => {
           },
         };
       }
-    if (!resolvedLat || !resolvedLng) {
-      // Default fallback coordinates (Mumbai, India) if GPS is denied or unavailable
+    }
+
+    // Always ensure resolvedLat and resolvedLng are valid numbers, falling back to Mumbai (19.0760, 72.8777) if coordinates are null/undefined
+    const numLat = Number(resolvedLat);
+    const numLng = Number(resolvedLng);
+    if (!resolvedLat || !resolvedLng || isNaN(numLat) || isNaN(numLng)) {
       resolvedLat = 19.0760;
       resolvedLng = 72.8777;
       resolvedAddress = 'Mumbai, Maharashtra, India';
+    } else {
+      resolvedLat = numLat;
+      resolvedLng = numLng;
     }
 
     let categories = vibeCategoryMap[vibe] || vibeCategoryMap[mood];
@@ -535,6 +616,32 @@ const getNearbyPlaces = async (req, res, next) => {
         prependedPlace,
         ...places.filter((p) => p.name.toLowerCase() !== prependedPlace.name.toLowerCase())
       ].slice(0, 20);
+    }
+
+    // Guaranteed Fallback Injection if API returns 0 or < 3 places so NO vibe is ever empty
+    if (finalPlaces.length < 3 && vibeFallbackPlaces[vibe]) {
+      const fallbackList = vibeFallbackPlaces[vibe].map((item, idx) => ({
+        osmId: `fallback-${vibe}-${idx}`,
+        name: item.name,
+        category: item.category,
+        lat: item.lat,
+        lng: item.lng,
+        distance: 0,
+        address: item.address,
+        phone: null,
+        website: null,
+        photo: null,
+        description: item.description,
+        budget: null,
+        travelTimes: { walking: 15, bicycling: 8, driving: 10, recommended: 'driving', recommendedTime: 10 },
+      }));
+
+      const existingNames = new Set(finalPlaces.map((p) => p.name.toLowerCase()));
+      for (const fb of fallbackList) {
+        if (!existingNames.has(fb.name.toLowerCase())) {
+          finalPlaces.push(fb);
+        }
+      }
     }
 
     // Fetch details for each place in parallel to get wiki_and_media (real photo)
