@@ -1,5 +1,72 @@
 const Feedback = require('../models/Feedback');
 const nodemailer = require('nodemailer');
+const axios = require('axios');
+
+// Discord Webhook Notification Helper
+const categoryColors = {
+  'Bug Report': 15728640,     // Red
+  'Feature Request': 16109579, // Gold
+  'Spot Suggestion': 439892,   // Cyan
+  'General Feedback': 6514417, // Purple
+  'Other': 10181046,           // Magenta
+};
+
+const sendDiscordWebhookNotification = async (feedback) => {
+  try {
+    const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+    if (!webhookUrl) return;
+
+    const stars = '⭐'.repeat(feedback.rating || 5);
+    const color = categoryColors[feedback.category] || 6514417;
+
+    const embed = {
+      title: `💬 New Feedback: ${feedback.category}`,
+      description: feedback.message,
+      color: color,
+      fields: [
+        { name: '👤 Name', value: feedback.name || 'Anonymous', inline: true },
+        { name: '📧 Email', value: feedback.email || 'N/A', inline: true },
+        { name: '⭐ Rating', value: `${stars} (${feedback.rating}/5)`, inline: true },
+      ],
+      footer: { text: 'Where To? App • Developer Instant Alert' },
+      timestamp: new Date().toISOString(),
+    };
+
+    await axios.post(webhookUrl, {
+      username: 'Where To? Feedback Bot',
+      avatar_url: 'https://cdn-icons-png.flaticon.com/512/3652/3652191.png',
+      embeds: [embed],
+    });
+    console.log('✅ Discord Webhook Feedback notification sent successfully!');
+  } catch (err) {
+    console.error('Discord Webhook error:', err.message);
+  }
+};
+
+// Telegram Bot Notification Helper
+const sendTelegramNotification = async (feedback) => {
+  try {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+    if (!botToken || !chatId) return;
+
+    const stars = '⭐'.repeat(feedback.rating || 5);
+    const text = `💬 *New Feedback Received on Where To?*\n\n` +
+      `📌 *Category:* ${feedback.category}\n` +
+      `👤 *From:* ${feedback.name} (${feedback.email})\n` +
+      `⭐ *Rating:* ${stars} (${feedback.rating}/5)\n\n` +
+      `📝 *Message:*\n${feedback.message}`;
+
+    await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      chat_id: chatId,
+      text: text,
+      parse_mode: 'Markdown',
+    });
+    console.log('✅ Telegram Bot Feedback notification sent successfully!');
+  } catch (err) {
+    console.error('Telegram Bot error:', err.message);
+  }
+};
 
 // Optional Email Alert Helper to Admin
 const sendAdminEmailNotification = async (feedback) => {
@@ -37,16 +104,13 @@ const sendAdminEmailNotification = async (feedback) => {
               ${feedback.message}
             </p>
           </div>
-          <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 24px;">
-            Where To? Admin Notification System
-          </p>
         </div>
       `,
     };
 
     await transporter.sendMail(mailOptions);
   } catch (err) {
-    console.error('Failed to send admin feedback email notification:', err.message);
+    console.error('Failed to send admin email notification:', err.message);
   }
 };
 
@@ -70,7 +134,12 @@ const submitFeedback = async (req, res) => {
       message: message.trim(),
     });
 
-    // Send email alert asynchronously without blocking response
+    // Console Log for Backend Terminal Output
+    console.log(`\n💬 [NEW FEEDBACK RECEIVED] [${feedback.category}] from ${feedback.name} (${feedback.email}): "${feedback.message}" (${feedback.rating}/5 stars)\n`);
+
+    // Asynchronously dispatch notifications (Discord, Telegram, Email)
+    sendDiscordWebhookNotification(feedback);
+    sendTelegramNotification(feedback);
     sendAdminEmailNotification(feedback);
 
     res.status(201).json({
@@ -84,7 +153,7 @@ const submitFeedback = async (req, res) => {
   }
 };
 
-// @desc    Get all feedback submissions (Admin Inbox)
+// @desc    Get all feedback submissions
 // @route   GET /api/feedback
 // @access  Public
 const getFeedbacks = async (req, res) => {
@@ -99,7 +168,7 @@ const getFeedbacks = async (req, res) => {
   }
 };
 
-// @desc    Update feedback status (New -> Reviewed -> Resolved)
+// @desc    Update feedback status
 // @route   PUT /api/feedback/:id/status
 // @access  Public
 const updateFeedbackStatus = async (req, res) => {
