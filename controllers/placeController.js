@@ -347,10 +347,11 @@ const getNearbyPlaces = async (req, res, next) => {
           },
         };
       }
-    } else {
-      if (!lat || !lng) {
-        return res.status(400).json({ message: 'Location (coordinates or text search) is required' });
-      }
+    if (!resolvedLat || !resolvedLng) {
+      // Default fallback coordinates (Mumbai, India) if GPS is denied or unavailable
+      resolvedLat = 19.0760;
+      resolvedLng = 72.8777;
+      resolvedAddress = 'Mumbai, Maharashtra, India';
     }
 
     let categories = vibeCategoryMap[vibe] || vibeCategoryMap[mood];
