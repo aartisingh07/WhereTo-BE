@@ -25,27 +25,35 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-// Map mood → Geoapify category codes
+// Map vibe → Geoapify category codes
 // Full list: https://apidocs.geoapify.com/docs/places/#categories
 const vibeCategoryMap = {
-  // Couples vibes
+  // Solo Vibes
+  solo_cafes:    'catering.cafe,commercial.food_and_drink.bakery',
+  bookstores:    'commercial.books,education.library',
+  nature_trails: 'leisure.park,leisure.park.garden,natural.forest,natural.water',
+  art_museums:   'entertainment.museum,entertainment.culture.gallery,entertainment.culture,building.museum',
+  solo_cinema:   'entertainment.cinema',
+  scenic_drives: 'tourism.attraction.viewpoint,leisure.park.garden,natural.water',
+
+  // Couples Vibes
   beaches:          'beach,natural.water,tourism.attraction.viewpoint',
   cafes:            'catering.cafe,commercial.food_and_drink.bakery',
-  romantic_dining:  'catering.restaurant,catering.cafe',
+  romantic_dining:  'catering.restaurant',
   scenic_spots:     'tourism.attraction.viewpoint,leisure.park.garden',
-  nature:           'natural.water,leisure.park,beach',
+  nature:           'natural.water,leisure.park,beach,natural.forest',
 
-  // Family vibes
-  parks:            'leisure.park,tourism.attraction',
+  // Family Vibes
+  parks:            'leisure.park,leisure.park.garden,entertainment.theme_park',
   malls:            'commercial.shopping_mall,commercial.marketplace',
-  zoos:             'entertainment.zoo,tourism.attraction',
-  museums:          'entertainment.museum,tourism.attraction',
-  picnic:           'leisure.park,leisure.park.garden',
+  zoos:             'entertainment.zoo,entertainment.aquarium',
+  museums:          'entertainment.museum,entertainment.culture.gallery,building.museum',
+  picnic:           'leisure.park,leisure.park.garden,natural.water',
 
-  // Friends vibes
+  // Friends Vibes
   concerts:         'entertainment.culture,catering.bar,catering.pub',
   trekking:         'sport.sports_centre,natural.mountain.peak,natural.forest',
-  sports:           'sport.sports_centre',
+  sports:           'sport.sports_centre,sport',
   food_crawl:       'catering.restaurant,catering.cafe,catering.fast_food,catering.food_court',
   camping:          'leisure.park,natural.water,natural.forest',
 };
@@ -61,6 +69,9 @@ const categoryToLabel = {
   'commercial.food_and_drink.bakery':       'Bakery',
   'commercial.shopping_mall':               'Shopping Mall',
   'commercial.marketplace':                 'Marketplace',
+  'commercial.books':                       'Bookstore',
+  'education.library':                      'Library',
+  'education.university':                   'Study Space',
   'leisure.park.garden':                    'Garden',
   'leisure.park':                           'Park',
   'beach':                                  'Beach',
@@ -70,13 +81,16 @@ const categoryToLabel = {
   'tourism.attraction.viewpoint':           'Scenic Viewpoint',
   'tourism.attraction':                     'Attraction',
   'sport.sports_centre':                    'Sports Centre',
-  'entertainment.zoo':                      'Zoo / Aquarium',
-  'entertainment.museum':                   'Museum & Gallery',
-  'entertainment.culture':                  'Concert & Live Event',
+  'sport':                                  'Sports & Turf',
+  'entertainment.zoo':                      'Zoo & Wildlife',
+  'entertainment.aquarium':                 'Aquarium',
+  'entertainment.museum':                   'Museum',
+  'entertainment.culture.gallery':         'Art Gallery',
+  'entertainment.culture':                  'Cultural Center',
+  'entertainment.cinema':                   'Cinema & Movies',
+  'entertainment.theme_park':               'Amusement & Theme Park',
   'catering.bar':                           'Bar & Lounge',
   'catering.pub':                           'Pub & Club',
-  'education.library':                      'Library',
-  'education.university':                   'Study Space',
 };
 
 // Derive a friendly label from Geoapify's categories array
@@ -87,6 +101,138 @@ const getLabel = (categories = []) => {
     if (match) return categoryToLabel[match];
   }
   return 'Place';
+};
+
+// Helper for strict vibe filtering constraint
+const validatePlaceForVibe = (name, label, rawCategories = [], vibeId) => {
+  if (!vibeId || vibeId === 'all') return true;
+
+  const nameLower = (name || '').toLowerCase();
+  const labelLower = (label || '').toLowerCase();
+  const rawCatsStr = rawCategories.join(',').toLowerCase();
+
+  const isHospitality = (
+    nameLower.includes('hotel') ||
+    nameLower.includes('resort') ||
+    nameLower.includes('lodge') ||
+    nameLower.includes('guest house') ||
+    nameLower.includes('restaurant') ||
+    nameLower.includes('sweets') ||
+    nameLower.includes('dhaba') ||
+    rawCatsStr.includes('catering.restaurant') ||
+    rawCatsStr.includes('catering.fast_food')
+  );
+
+  if (vibeId === 'art_museums' || vibeId === 'museums') {
+    const isMuseum = (
+      labelLower.includes('museum') ||
+      labelLower.includes('gallery') ||
+      labelLower.includes('cultural') ||
+      nameLower.includes('museum') ||
+      nameLower.includes('gallery') ||
+      nameLower.includes('art') ||
+      nameLower.includes('kala') ||
+      nameLower.includes('academy') ||
+      rawCatsStr.includes('entertainment.museum') ||
+      rawCatsStr.includes('entertainment.culture')
+    );
+    if (!isMuseum) return false;
+    if (isHospitality && !nameLower.includes('museum') && !nameLower.includes('gallery')) {
+      return false;
+    }
+    return true;
+  }
+
+  if (vibeId === 'parks' || vibeId === 'nature_trails' || vibeId === 'nature') {
+    const isPark = (
+      labelLower.includes('park') ||
+      labelLower.includes('garden') ||
+      labelLower.includes('forest') ||
+      labelLower.includes('trail') ||
+      labelLower.includes('viewpoint') ||
+      nameLower.includes('park') ||
+      nameLower.includes('garden') ||
+      nameLower.includes('forest') ||
+      nameLower.includes('hill') ||
+      rawCatsStr.includes('leisure.park') ||
+      rawCatsStr.includes('natural.forest')
+    );
+    if (!isPark) return false;
+    if (isHospitality && !nameLower.includes('park') && !nameLower.includes('garden')) {
+      return false;
+    }
+    return true;
+  }
+
+  if (vibeId === 'bookstores') {
+    const isBook = (
+      labelLower.includes('bookstore') ||
+      labelLower.includes('library') ||
+      nameLower.includes('book') ||
+      nameLower.includes('library') ||
+      nameLower.includes('reader') ||
+      rawCatsStr.includes('commercial.books') ||
+      rawCatsStr.includes('education.library')
+    );
+    if (!isBook) return false;
+    return true;
+  }
+
+  if (vibeId === 'solo_cinema') {
+    const isCinema = (
+      labelLower.includes('cinema') ||
+      nameLower.includes('cinema') ||
+      nameLower.includes('pvr') ||
+      nameLower.includes('inox') ||
+      nameLower.includes('cinepolis') ||
+      nameLower.includes('theater') ||
+      nameLower.includes('theatre') ||
+      rawCatsStr.includes('entertainment.cinema')
+    );
+    if (!isCinema) return false;
+    return true;
+  }
+
+  if (vibeId === 'beaches') {
+    const isBeach = (
+      labelLower.includes('beach') ||
+      nameLower.includes('beach') ||
+      nameLower.includes('coast') ||
+      nameLower.includes('sea') ||
+      rawCatsStr.includes('beach')
+    );
+    if (!isBeach) return false;
+    if (isHospitality && !nameLower.includes('beach')) return false;
+    return true;
+  }
+
+  if (vibeId === 'zoos') {
+    const isZoo = (
+      labelLower.includes('zoo') ||
+      labelLower.includes('aquarium') ||
+      nameLower.includes('zoo') ||
+      nameLower.includes('sanctuary') ||
+      rawCatsStr.includes('entertainment.zoo')
+    );
+    if (!isZoo) return false;
+    return true;
+  }
+
+  if (vibeId === 'solo_cafes' || vibeId === 'cafes') {
+    const isCafe = (
+      labelLower.includes('cafe') ||
+      labelLower.includes('bakery') ||
+      nameLower.includes('cafe') ||
+      nameLower.includes('coffee') ||
+      nameLower.includes('bakery') ||
+      rawCatsStr.includes('catering.cafe') ||
+      rawCatsStr.includes('commercial.food_and_drink.bakery')
+    );
+    if (!isCafe) return false;
+    return true;
+  }
+
+  return true;
 };
 
 // @desc    Fetch nearby places via Geoapify Places API
@@ -208,7 +354,7 @@ const getNearbyPlaces = async (req, res, next) => {
     }
 
     let categories = vibeCategoryMap[vibe] || vibeCategoryMap[mood];
-    if (!categories || vibe === 'all' || isCustomSearch) {
+    if (!categories || vibe === 'all') {
       categories = 'commercial.shopping_mall,catering.restaurant,catering.cafe,tourism.attraction,leisure.park,beach,natural.water,tourism.attraction.viewpoint,entertainment.zoo,entertainment.museum,sport.sports_centre,catering.bar,catering.fast_food,commercial.marketplace';
     }
 
@@ -305,23 +451,9 @@ const getNearbyPlaces = async (req, res, next) => {
 
         const label = getLabel(props.categories || []);
 
-        // Strict disjoint vibe filter (skip if custom search or vibe is 'all')
-        if (vibe !== 'all' && !isCustomSearch) {
-          if (mood === 'chill' && !['Park', 'Lake / Water', 'Beach'].includes(label)) {
-            return null;
-          }
-          if (mood === 'romantic' && !['Scenic Viewpoint', 'Beach', 'Park', 'Garden'].includes(label)) {
-            return null;
-          }
-          if (mood === 'adventure' && !['Mountain Peak', 'Adventure Spot', 'Sports Centre', 'Beach'].includes(label)) {
-            return null;
-          }
-          if (mood === 'study' && !['Library', 'Study Space', 'Cafe'].includes(label)) {
-            return null;
-          }
-          if (mood === 'foodie' && !['Restaurant', 'Cafe', 'Fast Food', 'Food Court', 'Bakery', 'Food Cart', 'Food Truck'].includes(label)) {
-            return null;
-          }
+        // Strict vibe validation filter — rejects hotels, restaurants, or wrong place types
+        if (!validatePlaceForVibe(name, label, props.categories || [], vibe)) {
+          return null;
         }
 
         const categoryLower = label.toLowerCase();
@@ -397,7 +529,7 @@ const getNearbyPlaces = async (req, res, next) => {
       .slice(0, 20);
 
     let finalPlaces = places;
-    if (prependedPlace) {
+    if (prependedPlace && validatePlaceForVibe(prependedPlace.name, prependedPlace.category, [], vibe)) {
       finalPlaces = [
         prependedPlace,
         ...places.filter((p) => p.name.toLowerCase() !== prependedPlace.name.toLowerCase())
