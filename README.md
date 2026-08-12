@@ -2,6 +2,11 @@
 
 > REST API & real-time WebSocket server for the **Where To?** platform — a collaborative room-based social app where groups can chat, vote on multiplayer games, discover movies with streaming availability, run synced Pomodoro sessions, and plan outings based on location midpoints.
 
+[![Live Demo](https://img.shields.io/badge/🚀_Live_Demo-where--to--beryl.vercel.app-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://where-to-beryl.vercel.app/)
+
+🌐 **Live Application:** [https://where-to-beryl.vercel.app](https://where-to-beryl.vercel.app)  
+📡 **Live API Endpoint:** `https://whereto-be.onrender.com/api`
+
 ---
 
 ## ✨ Features
