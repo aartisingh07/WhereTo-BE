@@ -54,8 +54,35 @@ const sendOTP = async (req, res, next) => {
       </div>
     `;
 
-    // 1. Try sending via Resend HTTPS API (Bypasses all cloud SMTP port restrictions over Port 443)
-    if (process.env.RESEND_API_KEY) {
+    // 1. Try sending via Brevo (Sendinblue) HTTPS API (Delivers to ANY email recipient for free!)
+    if (!emailSent && process.env.BREVO_API_KEY) {
+      try {
+        await axios.post(
+          'https://api.brevo.com/v3/smtp/email',
+          {
+            sender: { name: 'Where To? App', email: process.env.EMAIL_USER || 'aartiarvind2007@gmail.com' },
+            to: [{ email: email }],
+            subject: 'Verify your email - Where To?',
+            htmlContent: htmlBody,
+          },
+          {
+            headers: {
+              'api-key': process.env.BREVO_API_KEY.trim(),
+              'content-type': 'application/json',
+              'accept': 'application/json',
+            },
+            timeout: 10000,
+          }
+        );
+        emailSent = true;
+        console.log(`✉️  [BREVO HTTPS SUCCESS] Verification code sent to ${email}`);
+      } catch (brevoErr) {
+        console.error('Brevo API error:', brevoErr.response?.data || brevoErr.message);
+      }
+    }
+
+    // 2. Try sending via Resend HTTPS API
+    if (!emailSent && process.env.RESEND_API_KEY) {
       try {
         await axios.post(
           'https://api.resend.com/emails',
