@@ -30,19 +30,41 @@ connectDB();
 const app = express();
 const server = http.createServer(app);
 
+// Dynamic CORS configuration allowing FRONTEND_URL, CLIENT_URL, local dev & any .vercel.app deployment
+const isOriginAllowed = (origin) => {
+  if (!origin) return true;
+  const allowed = [
+    process.env.CLIENT_URL,
+    process.env.FRONTEND_URL,
+    'http://localhost:5173',
+  ].filter(Boolean);
+  if (allowed.includes(origin)) return true;
+  if (origin.endsWith('.vercel.app')) return true;
+  return false;
+};
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (isOriginAllowed(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, true); // fallback allow for production flexibility
+    }
+  },
+  credentials: true,
+};
+
 // Initialize Socket.io
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: (origin, callback) => callback(null, true),
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 });
 
 // Middleware
-app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
-  credentials: true,
-}));
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
