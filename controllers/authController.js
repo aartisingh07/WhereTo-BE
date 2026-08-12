@@ -90,8 +90,7 @@ const sendOTP = async (req, res, next) => {
     res.json({
       message: emailSent 
         ? 'Verification code sent to your email.' 
-        : 'Verification code generated. (Check server console log in development)',
-      code: (!emailSent && process.env.NODE_ENV !== 'production') ? code : undefined
+        : 'Verification code generated and sent to your email.'
     });
   } catch (error) {
     next(error);
