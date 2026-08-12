@@ -41,13 +41,16 @@ const sendOTP = async (req, res, next) => {
     // Store in DB (will auto-delete after 5 minutes due to TTL index)
     await EmailOTP.create({ email: email.toLowerCase(), code });
 
-    // Send email using nodemailer
+    // Send email using nodemailer with connection timeouts to prevent hanging on cloud servers
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
       },
+      connectionTimeout: 4000,
+      greetingTimeout: 4000,
+      socketTimeout: 4000,
     });
 
     const mailOptions = {
@@ -70,7 +73,11 @@ const sendOTP = async (req, res, next) => {
     let emailSent = false;
     if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
       try {
-        await transporter.sendMail(mailOptions);
+        const sendMailPromise = transporter.sendMail(mailOptions);
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('SMTP connection timeout')), 4500)
+        );
+        await Promise.race([sendMailPromise, timeoutPromise]);
         emailSent = true;
       } catch (err) {
         console.error('Nodemailer failed to send email:', err.message);
