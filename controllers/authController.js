@@ -41,53 +41,72 @@ const sendOTP = async (req, res, next) => {
     // Store in DB (will auto-delete after 5 minutes due to TTL index)
     await EmailOTP.create({ email: email.toLowerCase(), code });
 
-    // Send email using nodemailer via port 587 STARTTLS (forcing IPv4 family: 4 to prevent Render IPv6 ENETUNREACH)
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false,
-      requireTLS: true,
-      family: 4,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-      connectionTimeout: 8000,
-      greetingTimeout: 8000,
-      socketTimeout: 8000,
-    });
-
-    const mailOptions = {
-      from: `"Where To? App" <${process.env.EMAIL_USER || 'no-reply@whereto.com'}>`,
-      to: email,
-      subject: 'Verify your email - Where To?',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 12px; background-color: #111827; color: #fff;">
-          <h2 style="color: #4f46e5; text-align: center;">Where To?</h2>
-          <p>Hello,</p>
-          <p>Thank you for signing up for Where To!. Please verify your email by entering the 6-digit code below:</p>
-          <div style="background-color: #1f2937; padding: 15px; text-align: center; border-radius: 8px; font-size: 24px; font-weight: bold; letter-spacing: 4px; color: #38bdf8; margin: 20px 0; border: 1px solid #374151;">
-            ${code}
-          </div>
-          <p style="color: #9ca3af; font-size: 12px; text-align: center;">This code is valid for 5 minutes. If you did not request this code, please ignore this email.</p>
-        </div>
-      `,
-    };
-
     let emailSent = false;
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    const htmlBody = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 12px; background-color: #111827; color: #fff;">
+        <h2 style="color: #4f46e5; text-align: center;">Where To?</h2>
+        <p>Hello,</p>
+        <p>Thank you for signing up for Where To!. Please verify your email by entering the 6-digit code below:</p>
+        <div style="background-color: #1f2937; padding: 15px; text-align: center; border-radius: 8px; font-size: 24px; font-weight: bold; letter-spacing: 4px; color: #38bdf8; margin: 20px 0; border: 1px solid #374151;">
+          ${code}
+        </div>
+        <p style="color: #9ca3af; font-size: 12px; text-align: center;">This code is valid for 5 minutes. If you did not request this code, please ignore this email.</p>
+      </div>
+    `;
+
+    // 1. Try sending via Resend HTTPS API (Bypasses all cloud SMTP port restrictions over Port 443)
+    if (process.env.RESEND_API_KEY) {
       try {
-        const sendMailPromise = transporter.sendMail(mailOptions);
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('SMTP connection timeout')), 8500)
+        await axios.post(
+          'https://api.resend.com/emails',
+          {
+            from: 'Where To? <onboarding@resend.dev>',
+            to: [email],
+            subject: 'Verify your email - Where To?',
+            html: htmlBody,
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${process.env.RESEND_API_KEY.trim()}`,
+              'Content-Type': 'application/json',
+            },
+            timeout: 10000,
+          }
         );
-        await Promise.race([sendMailPromise, timeoutPromise]);
+        emailSent = true;
+        console.log(`✉️  [RESEND HTTPS SUCCESS] Verification code sent to ${email}`);
+      } catch (resendErr) {
+        console.error('Resend API error:', resendErr.response?.data || resendErr.message);
+      }
+    }
+
+    // 2. Fallback to Nodemailer SMTP (for local development)
+    if (!emailSent && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      try {
+        const transporter = nodemailer.createTransport({
+          host: 'smtp.gmail.com',
+          port: 587,
+          secure: false,
+          requireTLS: true,
+          family: 4,
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
+          },
+          tls: { rejectUnauthorized: false },
+          connectionTimeout: 5000,
+          socketTimeout: 5000,
+        });
+
+        await transporter.sendMail({
+          from: `"Where To? App" <${process.env.EMAIL_USER}>`,
+          to: email,
+          subject: 'Verify your email - Where To?',
+          html: htmlBody,
+        });
         emailSent = true;
       } catch (err) {
-        console.error('Nodemailer failed to send email:', err.message);
+        console.error('Nodemailer SMTP failed:', err.message);
       }
     }
 
