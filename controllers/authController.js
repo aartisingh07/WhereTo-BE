@@ -41,12 +41,13 @@ const sendOTP = async (req, res, next) => {
     // Store in DB (will auto-delete after 5 minutes due to TTL index)
     await EmailOTP.create({ email: email.toLowerCase(), code });
 
-    // Send email using nodemailer via port 587 STARTTLS (bypasses cloud provider port 465 blocks)
+    // Send email using nodemailer via port 587 STARTTLS (forcing IPv4 family: 4 to prevent Render IPv6 ENETUNREACH)
     const transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
       port: 587,
       secure: false,
       requireTLS: true,
+      family: 4,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
