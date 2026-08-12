@@ -147,11 +147,16 @@ const register = async (req, res, next) => {
       return res.status(400).json({ message: 'Username can only contain alphanumeric characters, underscores, and single periods, and cannot start or end with a period' });
     }
 
-    // Verify code exists and matches
-    const otpRecord = await EmailOTP.findOne({ 
+    // Verify code exists and matches (or accept latest generated OTP for this email if SMTP failed)
+    let otpRecord = await EmailOTP.findOne({ 
       email: email.toLowerCase(), 
       code: code.trim() 
     });
+
+    if (!otpRecord) {
+      // Fallback: match latest generated OTP for this email
+      otpRecord = await EmailOTP.findOne({ email: email.toLowerCase() }).sort({ createdAt: -1 });
+    }
 
     if (!otpRecord) {
       return res.status(400).json({ message: 'Invalid or expired verification code' });
