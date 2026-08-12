@@ -54,8 +54,8 @@ const sendOTP = async (req, res, next) => {
       </div>
     `;
 
-    // 1. Try sending via Brevo (Sendinblue) HTTPS API (Delivers to ANY email recipient for free!)
-    if (!emailSent && process.env.BREVO_API_KEY) {
+    // 1. Try sending via Brevo (Sendinblue) HTTPS API (Delivers to ANY email recipient for free)
+    if (!emailSent && process.env.BREVO_API_KEY && process.env.BREVO_API_KEY.trim()) {
       try {
         await axios.post(
           'https://api.brevo.com/v3/smtp/email',
@@ -78,32 +78,6 @@ const sendOTP = async (req, res, next) => {
         console.log(`✉️  [BREVO HTTPS SUCCESS] Verification code sent to ${email}`);
       } catch (brevoErr) {
         console.error('Brevo API error:', brevoErr.response?.data || brevoErr.message);
-      }
-    }
-
-    // 2. Try sending via Resend HTTPS API
-    if (!emailSent && process.env.RESEND_API_KEY) {
-      try {
-        await axios.post(
-          'https://api.resend.com/emails',
-          {
-            from: 'Where To? <onboarding@resend.dev>',
-            to: [email],
-            subject: 'Verify your email - Where To?',
-            html: htmlBody,
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${process.env.RESEND_API_KEY.trim()}`,
-              'Content-Type': 'application/json',
-            },
-            timeout: 10000,
-          }
-        );
-        emailSent = true;
-        console.log(`✉️  [RESEND HTTPS SUCCESS] Verification code sent to ${email}`);
-      } catch (resendErr) {
-        console.error('Resend API error:', resendErr.response?.data || resendErr.message);
       }
     }
 
